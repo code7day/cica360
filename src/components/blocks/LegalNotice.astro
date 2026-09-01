@@ -1,0 +1,17 @@
+---
+/** Stub funcional — presentacional puro, sin JS. */
+import type { Block } from '../../lib/types';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as { html?: string; body?: string };
+const html = content.html ?? content.body ?? '';
+---
+
+<section class="mx-auto max-w-3xl px-4 py-12 text-sm text-gray-600">
+  {block.title && <h2 class="mb-4 text-lg font-semibold">{block.title}</h2>}
+  <div class="prose prose-sm max-w-none" set:html={html} />
+</section>

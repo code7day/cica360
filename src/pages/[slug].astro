@@ -1,0 +1,31 @@
+---
+import type { GetStaticPaths } from 'astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import BlockRenderer from '../components/blocks/BlockRenderer.astro';
+import { getAllPages, getPage } from '../lib/api';
+
+/**
+ * Rutas interiores (`/sobre-cica`, `/servicios`, `/casos-de-exito`,
+ * `/contacto`, y cualquier page nueva que se publique en Filament sin
+ * tocar este archivo). La home (`is_home = true`) se excluye acá porque
+ * ya tiene su propia ruta en `src/pages/index.astro` — evita que la misma
+ * page termine sirviéndose en dos URLs distintas (`/` y `/home`).
+ */
+export const getStaticPaths = (async () => {
+  const pages = await getAllPages();
+
+  return pages.filter((page) => !page.is_home).map((page) => ({ params: { slug: page.slug } }));
+}) satisfies GetStaticPaths;
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  throw new Error('[pages/[slug].astro] Falta el parámetro slug.');
+}
+
+const page = await getPage(slug);
+---
+
+<BaseLayout title={page.title} description={page.meta?.seo_description}>
+  {page.blocks.map((block) => <BlockRenderer block={block} />)}
+</BaseLayout>

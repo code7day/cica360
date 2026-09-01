@@ -1,0 +1,362 @@
+---
+/**
+ * Logos / Socios (`logos`) — implementación real, 2026-08-31, reemplaza el
+ * stub anterior (nunca mostraba nada: los 5 items placeholder que traía
+ * `Cliente0ContentSeeder` tenían `media_id: null`, y este componente
+ * descartaba en silencio cualquier item sin `media.url`).
+ *
+ * Layout (pedido del Tech Lead, con captura de referencia): "franja de
+ * marcas" — 7 columnas por página en desktop (`content.items` se agrupa en
+ * páginas fijas de `ITEMS_PER_PAGE` = 7 acá, no un límite en la API: el
+ * bloque sigue siendo un `Repeater` autocontenido en `content.items[]`,
+ * mismo patrón que `features`/`services_grid`, no una tabla resuelta en
+ * runtime como `testimonials`). Con 7 o menos items: grilla estática, sin
+ * carousel. Con más de 7: carousel PAGINADO — cada "página" del carousel es
+ * un grupo fijo de hasta 7 logos (no un scroll continuo item por item como
+ * `Testimonials.astro`), con flechas prev/next (mismo ícono/patrón que
+ * `Hero.astro`), puntos de página, auto-avance y drag/swipe con Pointer
+ * Events (mismo mecanismo que se agregó a `Testimonials.astro` el mismo
+ * día — mouse+touch+pen unificado).
+ *
+ * Filtro por defecto + hover a color real (pedido del Tech Lead): cada
+ * logo sale con un filtro CSS (`properties.media_filter_grayscale`/
+ * `media_opacity`, ya genéricos — mismo set que `Split.astro` — nivel de
+ * BLOQUE, aplica a todos los logos por igual) y al pasar el mouse por
+ * ENCIMA DE ESE LOGO puntual (no de toda la sección) el filtro se saca
+ * por completo, mostrando el logo a su color real sin ningún filtro.
+ *
+ * `url` por logo (pedido implícito — el campo ya existía en el form de
+ * Studio pero nunca se consumía acá): si el item trae `url`, el logo se
+ * envuelve en un `<a>`; si no, es una imagen suelta sin link.
+ */
+import type { Block, Media } from '../../lib/types';
+import { Icon } from 'astro-icon/components';
+
+interface LogoItem {
+  media?: Media | null;
+  url?: string | null;
+}
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+const content = block.content as { items?: LogoItem[] };
+// `Array.isArray()` a propósito, no `content.items ?? []`: un array PHP con
+// keys no-secuenciales se serializa como objeto JS (`{}`), no `[]` — pasó
+// de verdad con contenido legado del bloque `logos` (2026-09-01, ver
+// `genesis` PROGRESS.md). El backend ya lo normaliza con `array_values()`,
+// pero este guard evita que CUALQUIER forma inesperada de `content.items`
+// tire `.filter is not a function` acá.
+const items = (Array.isArray(content.items) ? content.items : []).filter((item) => item.media?.url);
+
+interface LogosProperties {
+  background_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  media_filter_grayscale?: number | null;
+  media_opacity?: number | null;
+}
+
+const properties = (block.properties as LogosProperties) ?? {};
+
+const PADDING_Y_CLASSES: Record<NonNullable<LogosProperties['padding_y']>, string> = {
+  sm: 'py-10 3md:py-14',
+  md: 'py-14 3md:py-20',
+  lg: 'py-16 3md:py-24',
+  xl: 'py-20 3md:py-32',
+};
+
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+const sectionStyle = properties.background_color ? `background-color: ${properties.background_color};` : '';
+
+const logoGrayscale = Math.min(100, Math.max(0, properties.media_filter_grayscale ?? 0));
+const logoOpacity = Math.min(100, Math.max(0, properties.media_opacity ?? 100));
+const logoFilterStyle = `--logo-grayscale: ${logoGrayscale}%; --logo-opacity: ${logoOpacity}%;`;
+
+// 7 columnas por página en desktop — ver docblock arriba. Agrupado acá
+// (no en el backend): la API sigue entregando `content.items[]` plano,
+// paginar es una decisión de presentación del frontend.
+const ITEMS_PER_PAGE = 7;
+const pages: LogoItem[][] = [];
+for (let i = 0; i < items.length; i += ITEMS_PER_PAGE) {
+  pages.push(items.slice(i, i + ITEMS_PER_PAGE));
+}
+const useCarousel = pages.length > 1;
+---
+
+<section class="w-full" style={sectionStyle || undefined}>
+  <div class={`mx-auto flex max-w-6xl flex-col items-center gap-8 px-4 sm:px-6 lg:px-8 ${paddingYClass}`}>
+    {
+      (block.pretitle || block.title || block.subtitle) && (
+        <div class="flex w-full flex-col items-center gap-1 text-center">
+          {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
+          {block.title && <h2 class="w-full text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl">{block.title}</h2>}
+          {block.subtitle && <p class="w-full text-lg font-light opacity-90 md:text-base">{block.subtitle}</p>}
+        </div>
+      )
+    }
+
+    {
+      pages.length > 0 && !useCarousel && (
+        <div class="grid w-full grid-cols-3 items-center justify-items-center gap-8 sm:grid-cols-4 md:grid-cols-5 2lg:grid-cols-7">
+          {pages[0].map((item) => (
+            <a
+              href={item.url || undefined}
+              target={item.url ? '_blank' : undefined}
+              rel={item.url ? 'noopener noreferrer' : undefined}
+              class:list={['logo-item', { 'pointer-events-none': !item.url }]}
+              style={logoFilterStyle}
+              aria-label={item.media?.alt_text || undefined}
+            >
+              <img src={item.media!.url!} alt={item.media?.alt_text ?? ''} class="h-10 w-auto object-contain sm:h-12" loading="lazy" />
+            </a>
+          ))}
+        </div>
+      )
+    }
+
+    {
+      pages.length > 0 && useCarousel && (
+        <div class="relative w-full" data-logos-carousel>
+          <div
+            class="logos-track flex snap-x snap-mandatory gap-8 overflow-x-auto scroll-smooth"
+            data-logos-track
+          >
+            {pages.map((page) => (
+              <div class="grid w-full shrink-0 snap-center grid-cols-3 items-center justify-items-center gap-8 sm:grid-cols-4 md:grid-cols-5 2lg:grid-cols-7" data-logos-page>
+                {page.map((item) => (
+                  <a
+                    href={item.url || undefined}
+                    target={item.url ? '_blank' : undefined}
+                    rel={item.url ? 'noopener noreferrer' : undefined}
+                    class:list={['logo-item', { 'pointer-events-none': !item.url }]}
+                    style={logoFilterStyle}
+                    aria-label={item.media?.alt_text || undefined}
+                  >
+                    <img src={item.media!.url!} alt={item.media?.alt_text ?? ''} class="h-10 w-auto object-contain sm:h-12" loading="lazy" />
+                  </a>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            class="text-cicagold-500 absolute top-1/2 left-0 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            data-logos-prev
+            aria-label="Página anterior"
+          >
+            <Icon name="ph:caret-left" class="size-5" />
+          </button>
+          <button
+            type="button"
+            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-10 w-10 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            data-logos-next
+            aria-label="Página siguiente"
+          >
+            <Icon name="ph:caret-right" class="size-5" />
+          </button>
+
+          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Páginas de logos">
+            {pages.map((_, index) => (
+              <button
+                type="button"
+                class="data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-black/20 transition-all data-[active=true]:w-6"
+                data-logos-dot
+                data-index={index}
+                aria-label={`Ir a la página ${index + 1}`}
+                aria-selected={index === 0 ? 'true' : 'false'}
+                role="tab"
+              />
+            ))}
+          </div>
+        </div>
+      )
+    }
+  </div>
+</section>
+
+<style>
+  .logos-track {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    touch-action: pan-y;
+    cursor: grab;
+  }
+
+  .logos-track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .logos-track.is-dragging {
+    cursor: grabbing;
+    scroll-snap-type: none;
+    user-select: none;
+  }
+
+  .logos-track.is-dragging [data-logos-page] {
+    pointer-events: none;
+  }
+
+  /* Filtro por defecto (grayscale + opacidad, configurables desde
+     Studio) que se saca por completo al pasar el mouse/foco por ENCIMA
+     DE CADA LOGO puntual — no de toda la franja. */
+  .logo-item img {
+    filter: grayscale(var(--logo-grayscale, 0%));
+    opacity: var(--logo-opacity, 100%);
+    transition:
+      filter 0.2s ease,
+      opacity 0.2s ease;
+  }
+
+  .logo-item:hover img,
+  .logo-item:focus-visible img {
+    filter: none;
+    opacity: 1;
+  }
+</style>
+
+<script>
+  // Carousel PAGINADO de logos — mismo patrón vainilla que
+  // `Testimonials.astro`/`Hero.astro`, pero cada "slide" acá es una
+  // PÁGINA de hasta 7 logos (grupo fijo), no un item individual. Drag con
+  // Pointer Events (mouse+touch+pen) + flechas + puntos + auto-avance,
+  // pausa en interacción, respeta `prefers-reduced-motion`.
+  function initLogosCarousels() {
+    const roots = document.querySelectorAll('[data-logos-carousel]');
+
+    roots.forEach((root) => {
+      if (!(root instanceof HTMLElement) || root.dataset.logosInitialized === 'true') return;
+      root.dataset.logosInitialized = 'true';
+
+      const track = root.querySelector('[data-logos-track]');
+      const pages = Array.from(root.querySelectorAll('[data-logos-page]'));
+      const dots = Array.from(root.querySelectorAll('[data-logos-dot]'));
+      const prevBtn = root.querySelector('[data-logos-prev]');
+      const nextBtn = root.querySelector('[data-logos-next]');
+
+      if (!(track instanceof HTMLElement) || pages.length <= 1) return;
+
+      const intervalMs = 6000;
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      let current = 0;
+      let timer: number | undefined;
+      let resumeTimer: number | undefined;
+
+      function scrollToIndex(index: number) {
+        const next = ((index % pages.length) + pages.length) % pages.length;
+        const target = pages[next] as HTMLElement;
+        track!.scrollTo({ left: target.offsetLeft - (track as HTMLElement).offsetLeft, behavior: 'smooth' });
+        setActive(next);
+      }
+
+      function setActive(index: number) {
+        current = index;
+        dots.forEach((dot, dotIndex) => {
+          dot.setAttribute('data-active', dotIndex === index ? 'true' : 'false');
+          dot.setAttribute('aria-selected', dotIndex === index ? 'true' : 'false');
+        });
+      }
+
+      function stop() {
+        if (timer) window.clearInterval(timer);
+        timer = undefined;
+      }
+
+      function start() {
+        if (prefersReducedMotion) return;
+        stop();
+        timer = window.setInterval(() => scrollToIndex(current + 1), intervalMs);
+      }
+
+      function pauseThenResume() {
+        stop();
+        if (resumeTimer) window.clearTimeout(resumeTimer);
+        resumeTimer = window.setTimeout(start, 2500);
+      }
+
+      function nearestIndex(): number {
+        const trackEl = track as HTMLElement;
+        const targetLeft = trackEl.scrollLeft + trackEl.offsetLeft;
+
+        let closest = 0;
+        let closestDistance = Infinity;
+
+        pages.forEach((page, index) => {
+          const distance = Math.abs((page as HTMLElement).offsetLeft - targetLeft);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closest = index;
+          }
+        });
+
+        return closest;
+      }
+
+      let isDragging = false;
+      let dragPointerId: number | undefined;
+      let dragStartX = 0;
+      let dragStartScrollLeft = 0;
+
+      function onPointerDown(event: PointerEvent) {
+        isDragging = true;
+        dragPointerId = event.pointerId;
+        dragStartX = event.clientX;
+        dragStartScrollLeft = (track as HTMLElement).scrollLeft;
+        (track as HTMLElement).classList.add('is-dragging');
+        (track as HTMLElement).setPointerCapture(event.pointerId);
+        stop();
+      }
+
+      function onPointerMove(event: PointerEvent) {
+        if (!isDragging || event.pointerId !== dragPointerId) return;
+        (track as HTMLElement).scrollLeft = dragStartScrollLeft - (event.clientX - dragStartX);
+      }
+
+      function onPointerUp(event: PointerEvent) {
+        if (!isDragging || event.pointerId !== dragPointerId) return;
+        isDragging = false;
+        (track as HTMLElement).classList.remove('is-dragging');
+        scrollToIndex(nearestIndex());
+        pauseThenResume();
+      }
+
+      track.addEventListener('pointerdown', onPointerDown);
+      track.addEventListener('pointermove', onPointerMove);
+      track.addEventListener('pointerup', onPointerUp);
+      track.addEventListener('pointercancel', onPointerUp);
+      track.addEventListener('scroll', pauseThenResume, { passive: true });
+      root.addEventListener('mouseenter', stop);
+      root.addEventListener('mouseleave', start);
+      root.addEventListener('focusin', stop);
+      root.addEventListener('focusout', start);
+
+      prevBtn?.addEventListener('click', () => {
+        scrollToIndex(current - 1);
+        pauseThenResume();
+      });
+      nextBtn?.addEventListener('click', () => {
+        scrollToIndex(current + 1);
+        pauseThenResume();
+      });
+
+      dots.forEach((dot) => {
+        dot.addEventListener('click', () => {
+          const index = Number.parseInt(dot.getAttribute('data-index') ?? '0', 10);
+          scrollToIndex(index);
+          pauseThenResume();
+        });
+      });
+
+      setActive(0);
+      start();
+    });
+  }
+
+  initLogosCarousels();
+  document.addEventListener('astro:page-load', initLogosCarousels);
+</script>

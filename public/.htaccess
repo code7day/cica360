@@ -1,0 +1,56 @@
+# Headers de seguridad y cache para Apache (shared hosting sin Node) — ver
+# docs/context/ARCHITECTURE.md §8. Punto de partida razonable, no
+# verificado en un hosting real todavía: probar especialmente la CSP antes
+# de confiar en que no rompe nada (imágenes desde el CDN de media, embeds
+# de YouTube si `slide.has_presentation_video` se usa).
+
+<IfModule mod_headers.c>
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+
+  # Ajustar img-src/media-src al dominio real donde termine sirviéndose la
+  # media de Stamless (hoy documentado como ejemplo cdn.stamless.host,
+  # ver docs/context/api/stamless-api-v1.md) antes de ir a producción.
+  Header always set Content-Security-Policy "default-src 'self'; img-src 'self' https: data:; media-src 'self' https:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+</IfModule>
+
+# Forzar HTTPS (asumiendo que el hosting/Cloudflare ya sirve SSL).
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} off
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# Página 404 propia (Astro genera dist/404.html a partir de src/pages/404.astro).
+ErrorDocument 404 /404.html
+
+# Sin listado de directorios.
+Options -Indexes
+
+# Compresión (si mod_deflate está disponible en el hosting).
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/xml application/json application/javascript application/xml+rss
+</IfModule>
+
+# Cache agresivo para assets con hash en el nombre (ver `build.assets` en
+# astro.config.mjs) — el propio nombre de archivo es el mecanismo de
+# cache-busting, así que es seguro cachear "para siempre".
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType image/png "access plus 1 month"
+  ExpiresByType image/jpeg "access plus 1 month"
+  ExpiresByType image/webp "access plus 1 month"
+  ExpiresByType image/svg+xml "access plus 1 month"
+  ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# Nota: `contacto.config.php` se sirve por el mismo motor PHP que
+# `contacto.php` (Apache lo ejecuta, no lo devuelve como texto plano) —
+# eso ya lo garantiza la config estándar de PHP del hosting, no requiere
+# reglas extra acá. Igual, nunca debe ser alcanzable con un nombre
+# distinto (ej. `contacto.config.php.bak`) — evitar dejar copias de
+# backup con esa extensión dentro de `public/`.

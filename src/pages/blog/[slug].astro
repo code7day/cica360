@@ -1,0 +1,37 @@
+---
+import type { GetStaticPaths } from 'astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getAllPosts, getPost } from '../../lib/api';
+
+export const getStaticPaths = (async () => {
+  const posts = await getAllPosts();
+  return posts.map((post) => ({ params: { slug: post.slug } }));
+}) satisfies GetStaticPaths;
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  throw new Error('[pages/blog/[slug].astro] Falta el parámetro slug.');
+}
+
+const post = await getPost(slug);
+---
+
+<BaseLayout title={post.title} description={post.meta?.seo_description ?? post.excerpt}>
+  <article class="mx-auto max-w-3xl px-4 py-16">
+    {post.featured_image?.url && (
+      <img src={post.featured_image.url} alt={post.featured_image.alt_text ?? ''} class="mb-8 w-full rounded" />
+    )}
+
+    {post.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{post.pretitle}</p>}
+    <h1 class="text-4xl font-bold">{post.title}</h1>
+    {post.subtitle && <p class="mt-2 text-lg text-gray-600">{post.subtitle}</p>}
+    {post.published_at && (
+      <time datetime={post.published_at} class="mt-4 block text-sm text-gray-400">
+        {new Date(post.published_at).toLocaleDateString('es', { year: 'numeric', month: 'long', day: 'numeric' })}
+      </time>
+    )}
+
+    <div class="prose mt-8 max-w-none" set:html={post.content ?? ''} />
+  </article>
+</BaseLayout>

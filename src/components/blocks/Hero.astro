@@ -1,0 +1,767 @@
+---
+/**
+ * Hero Slider — implementado por Claude a pedido directo del Tech Lead
+ * (mockup + PDF "HOME-STICKY MENU-ON SCROLLDOWN" compartidos en el chat),
+ * cruzando puntualmente el límite Claude=datos/Antigravity=visual descrito
+ * en CLAUDE.md. Queda documentado acá y en PROGRESS.md para que Antigravity
+ * tenga el contexto completo si necesita retocarlo.
+ *
+ * Pendiente explícitamente fuera de este componente (a pedido del Tech
+ * Lead): la barra de navegación (logo + links + sticky on scroll) — eso
+ * vive en Header.astro, no acá.
+ *
+ * Decisión de arquitectura: carousel con auto-avance/fade real, así que
+ * requiere JS (ver docs/context/ARCHITECTURE.md §4, tabla de bloques) —
+ * implementado con un <script> plano al final del archivo, SIN React, para
+ * no sumar una isla nueva innecesaria (ADR-001, "JS mínimo"): es
+ * interactividad simple (interval + toggle de clases), no justifica el
+ * costo de una isla de framework.
+ *
+ * Colores y tipografía: usar SIEMPRE los nombres reales del Manual de Marca
+ * (`cicaindigo-*`, `cicagold-*`, etc., definidos en src/styles/global.css)
+ * directo en las clases — sin alias tipo "navy"/"gold" sueltos. Hubo una
+ * versión anterior con alias `--color-brand-navy`/`--color-brand-gold` que
+ * se sacó a propósito (ver PROGRESS.md 2026-08-24): tener dos nombres para
+ * el mismo color es más confuso que útil cuando no hay necesidad real de
+ * indirección semántica (no cambia por tema/contexto). Fuente real de los
+ * colores/tipografía: `global.css`.
+ */
+import type { AlignContent, Block, DecoratorShape, PositionContainer, SlideProperties } from '../../lib/types';
+import { getSlider } from '../../lib/api';
+import { Icon } from 'astro-icon/components';
+
+/**
+ * Íconos: Phosphor (vía astro-icon + @iconify-json/ph), peso `regular`
+ * (lineal/outline) — decisión del Tech Lead: "elegante y lineal, no
+ * sólido". El mismo paquete trae el peso `fill` (`ph:<nombre>-fill`) por
+ * si algún componente futuro lo necesita, sin sumar otra librería. SVG
+ * inline en build time, cero JS de cliente.
+ */
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+const content = block.content as {
+  mode?: 'slider' | 'manual';
+  slider_slug?: string;
+  background_image?: { url: string | null; alt_text: string | null } | null;
+  /** Duración de cada slide en ms. Se clampa a [5000, 7000] por el spec pedido. */
+  interval_ms?: number;
+};
+
+const intervalMs = Math.min(7000, Math.max(5000, Number(content.interval_ms) || 6000));
+
+interface NormalizedSlide {
+  key: string;
+  pretitle: string | null;
+  title: string | null;
+  subtitle: string | null;
+  backgroundType: 'image' | 'video';
+  imageDesktop: string | null;
+  imageTablet: string | null;
+  imageMobile: string | null;
+  imageAlt: string;
+  videoDesktop: string | null;
+  videoMobile: string | null;
+  ctaLabel: string | null;
+  ctaHref: string | null;
+  ctaTarget: '_self' | '_blank';
+  properties: SlideProperties;
+}
+
+/**
+ * `position_container` (2026-08-30, pedido del Tech Lead): posición del
+ * contenedor de pretitle/title/subtitle/CTA sobre el slide, una de 9
+ * combinaciones `{top|middle|bottom}-{left|center|right}`. Se aplica desde
+ * `3md:` (960px, breakpoint custom del proyecto — ver `--breakpoint-3md`
+ * en `global.css`) hacia arriba — por debajo de eso (mobile Y tablets
+ * chicas) SIEMPRE se fuerza abajo-centro (clases base del contenedor, sin
+ * prefijo), sin importar esta config, por regla de negocio fija del MVP
+ * confirmada por el Tech Lead el 2026-08-31 (antes el corte mobile-only
+ * era `sm:`/540px — se corrigió a `3md:`/960px porque tablets chicas
+ * también deben mostrar la posición forzada, no solo teléfonos).
+ */
+const POSITION_CONTAINER_CLASSES: Record<PositionContainer, string> = {
+  'top-left': '3md:items-start 3md:justify-start',
+  'top-center': '3md:items-start 3md:justify-center',
+  'top-right': '3md:items-start 3md:justify-end',
+  'middle-left': '3md:items-center 3md:justify-start',
+  'middle-center': '3md:items-center 3md:justify-center',
+  'middle-right': '3md:items-center 3md:justify-end',
+  'bottom-left': '3md:items-end 3md:justify-start',
+  'bottom-center': '3md:items-end 3md:justify-center',
+  'bottom-right': '3md:items-end 3md:justify-end',
+};
+
+/**
+ * `align_content`: alineación del texto/CTA DENTRO del contenedor —
+ * independiente de `position_container` (un slide puede anclarse
+ * abajo-derecha y alinear su texto a la izquierda). Mismo criterio mobile
+ * Y tablets chicas: se fuerza a centro por default, `3md:` (960px) en
+ * adelante toma la config real.
+ */
+const ALIGN_CONTENT_CLASSES: Record<AlignContent, string> = {
+  left: '3md:items-start 3md:text-left',
+  center: '3md:items-center 3md:text-center',
+  right: '3md:items-end 3md:text-right',
+};
+
+function positionContainerClasses(properties: SlideProperties): string {
+  return POSITION_CONTAINER_CLASSES[properties.position_container ?? 'bottom-center'];
+}
+
+function alignContentClasses(properties: SlideProperties): string {
+  return ALIGN_CONTENT_CLASSES[properties.align_content ?? 'center'];
+}
+
+/**
+ * Efectos visuales de la imagen/video de fondo (`slide_background_*`,
+ * 2026-08-30). Un solo `style` combinando `filter` (los 6 filtros CSS
+ * aplicables), `opacity` y `mix-blend-mode` — se reutiliza en las 3 capas
+ * responsive (mobile/tablet/desktop) de cada slide, ya que los valores no
+ * varían por breakpoint.
+ */
+function backgroundEffectStyle(properties: SlideProperties): string {
+  const filters: string[] = [];
+  if (properties.slide_background_brightness != null) filters.push(`brightness(${properties.slide_background_brightness}%)`);
+  if (properties.slide_background_filter_saturate != null) filters.push(`saturate(${properties.slide_background_filter_saturate}%)`);
+  if (properties.slide_background_filter_grayscale != null) filters.push(`grayscale(${properties.slide_background_filter_grayscale}%)`);
+  if (properties.slide_background_filter_sepia != null) filters.push(`sepia(${properties.slide_background_filter_sepia}%)`);
+  if (properties.slide_background_filter_contrast != null) filters.push(`contrast(${properties.slide_background_filter_contrast}%)`);
+  if (properties.slide_background_filter_hue_rotate != null) filters.push(`hue-rotate(${properties.slide_background_filter_hue_rotate}deg)`);
+  if (properties.slide_background_filter_blur != null) filters.push(`blur(${properties.slide_background_filter_blur}px)`);
+
+  const opacity = (properties.slide_background_opacity ?? 100) / 100;
+  const blendMode = properties.slide_background_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+
+/**
+ * `decorator_bottom` (2026-08-30): shape SVG sobrepuesto al pie del slide.
+ * Solo el path de `wave` está medido sobre el Design System real (ver
+ * comentario original más abajo); `zigzag`/`curve`/`diagonal`/`triangle`
+ * son formas genéricas razonables — no hay asset de referencia todavía
+ * para esas, ajustar si Antigravity/diseño entrega un spec medido.
+ */
+const DECORATOR_PATHS: Record<Exclude<DecoratorShape, 'none'>, string> = {
+  wave: 'M0,38 C 160,50 250,56 324,56 C 420,56 550,45 720,35 C 850,28 950,18 1044,18 C 1150,18 1300,30 1440,48 L1440,64 L0,64 Z',
+  zigzag: 'M0,64 L0,42 L120,22 L240,42 L360,22 L480,42 L600,22 L720,42 L840,22 L960,42 L1080,22 L1200,42 L1320,22 L1440,42 L1440,64 Z',
+  curve: 'M0,64 L0,30 C 360,-6 1080,66 1440,30 L1440,64 Z',
+  diagonal: 'M0,64 L0,56 L1440,10 L1440,64 Z',
+  triangle: 'M0,64 L0,42 L660,42 L720,10 L780,42 L1440,42 L1440,64 Z',
+};
+
+const slider = content.mode === 'slider' && content.slider_slug ? await getSlider(content.slider_slug).catch(() => null) : null;
+
+const slidesFromSlider: NormalizedSlide[] = (slider?.slides ?? [])
+  .slice()
+  .sort((a, b) => a.sort_order - b.sort_order)
+  .map((slide) => {
+    const cta = slide.links?.[0];
+    return {
+      key: slide.uuid,
+      pretitle: slide.pretitle,
+      title: slide.title,
+      subtitle: slide.subtitle,
+      backgroundType: slide.background_type,
+      imageDesktop: slide.media.image_desktop?.url ?? null,
+      imageTablet: slide.media.image_tablet?.url ?? null,
+      imageMobile: slide.media.image_mobile?.url ?? null,
+      imageAlt: slide.media.image_desktop?.alt_text ?? slide.title ?? '',
+      videoDesktop: slide.media.video_desktop?.url ?? null,
+      videoMobile: slide.media.video_mobile?.url ?? null,
+      ctaLabel: cta?.label ?? null,
+      ctaHref: cta?.href ?? null,
+      ctaTarget: cta?.target ?? '_self',
+      properties: slide.properties ?? {},
+    };
+  });
+
+// Fallback a un único slide "manual" armado desde el bloque — cubre el
+// modo `manual` explícito Y el caso en que el slider no trajo nada
+// (slug mal escrito, API caída) para que la sección nunca quede vacía sin
+// explicación.
+const manualSlide: NormalizedSlide | null =
+  slidesFromSlider.length === 0
+    ? {
+        key: block.uuid,
+        pretitle: block.pretitle,
+        title: block.title,
+        subtitle: block.subtitle,
+        backgroundType: 'image',
+        imageDesktop: content.background_image?.url ?? null,
+        imageTablet: null,
+        imageMobile: null,
+        imageAlt: content.background_image?.alt_text ?? block.title ?? '',
+        videoDesktop: null,
+        videoMobile: null,
+        ctaLabel: block.links?.[0]?.label ?? null,
+        ctaHref: block.links?.[0]?.href ?? null,
+        ctaTarget: block.links?.[0]?.target ?? '_self',
+        properties: (block.properties as SlideProperties) ?? {},
+      }
+    : null;
+
+const slides: NormalizedSlide[] = slidesFromSlider.length > 0 ? slidesFromSlider : manualSlide ? [manualSlide] : [];
+
+/**
+ * `show_scroll_indicator` (2026-08-31, corregido el mismo día): NO es una
+ * property por slide — el Tech Lead aclaró que es una sola vez por Hero,
+ * sobrepuesta al decorador inferior, para todas las slides detrás. Se lee
+ * de dos lugares distintos según el modo, nunca de `slide.properties`:
+ * - Modo Slider (`slider` truthy — hubo `slider_slug` y el fetch resolvió):
+ *   viene de `slider.properties.show_scroll_indicator` (Slider real, ver
+ *   `SliderResource` en Studio, fieldset "Flecha de scroll").
+ * - Modo Manual (o slider sin slides / fetch fallido → cae al slide
+ *   sintético `manualSlide`): viene del propio bloque, `block.properties`.
+ */
+const showScrollIndicator = slider
+  ? Boolean(slider.properties?.show_scroll_indicator)
+  : Boolean((block.properties as SlideProperties)?.show_scroll_indicator);
+
+if (slides.length === 0 && import.meta.env.DEV) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[Hero.astro] Bloque "${block.uuid}" sin contenido para renderizar (sin slider_slug válido ni background_image) — se omite.`,
+  );
+}
+---
+
+{
+  slides.length > 0 && (
+    <section
+      class="bg-cicaindigo-900 relative h-screen w-full overflow-hidden text-white"
+      data-hero-slider
+      style={`--hero-interval: ${intervalMs}ms;`}
+    >
+      {/*
+        2026-08-30 (corrección del Tech Lead): el área de slides ANTES
+        medía "h-screen - 64px" (reservaba el alto del wave aparte), lo
+        que dejaba una franja plana sin imagen entre el fondo y el wave
+        blanco — se veía "cortado". Ahora el área de slides es `h-full`
+        (el fondo llega hasta el borde real de la sección) y el decorador
+        inferior (`<svg>` dentro de cada `.hero-slide`, `absolute
+        bottom-0 z-10` — desde 2026-08-30 configurable por slide vía
+        `decorator_bottom`, ver más abajo) queda SOBREPUESTO encima del
+        fondo, no en un espacio propio — así no hay franja intermedia sin
+        importar la imagen de cada slide.
+      */}
+      <div class="relative h-full w-full">
+        {slides.map((slide, index) => (
+          <div
+            class={`hero-slide absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+              index === 0 ? 'opacity-100' : 'pointer-events-none opacity-0'
+            }`}
+            data-hero-slide
+            aria-hidden={index === 0 ? 'false' : 'true'}
+          >
+            {slide.backgroundType === 'video' && (slide.videoDesktop || slide.videoMobile) ? (
+              <video
+                class="absolute inset-0 h-full w-full object-cover"
+                autoplay
+                muted
+                loop
+                playsinline
+                poster={slide.imageDesktop ?? undefined}
+              >
+                {slide.videoDesktop && <source src={slide.videoDesktop} media="(min-width: 768px)" />}
+                {slide.videoMobile && <source src={slide.videoMobile} />}
+              </video>
+            ) : slide.imageDesktop || slide.imageMobile ? (
+              <>
+                {/*
+                  `slide_background_color` (2026-08-30): color de fondo
+                  detrás de la imagen — transparente si no se configuró.
+                  Va primero (z-index implícito más bajo, orden de fuente)
+                  para que se vea a través de cualquier borde/transparencia
+                  de la imagen encima.
+                */}
+                <div
+                  class="absolute inset-0"
+                  style={`background-color: ${slide.properties.slide_background_color ?? 'transparent'};`}
+                  aria-hidden="true"
+                />
+                {/*
+                  Fondo tipo CSS background-image + `bg-cover` (2026-08-30,
+                  pedido del Tech Lead) en vez de <picture><img
+                  object-cover> — con <img> se veía "cortado" abajo. 3
+                  capas apiladas, una visible por breakpoint (mismo corte
+                  que antes: mobile <768px / tablet 768–1079px / desktop
+                  ≥1080px, los breakpoints `md`/`lg` reales del proyecto),
+                  con fallback en cascada a `imageDesktop` si el
+                  breakpoint no trae imagen propia. La URL es dinámica
+                  (viene del API) — va en `style`, no en una clase
+                  `bg-[url(...)]`: Tailwind no puede generar CSS para un
+                  valor que solo se conoce en runtime/build de Astro, no
+                  en el texto fuente. El mismo `style` suma los efectos de
+                  `slide_background_*` (filtros, opacidad, blend-mode,
+                  2026-08-30) — no varían por breakpoint, así que es el
+                  mismo bloque en las 3 capas.
+                  Trade-off aceptado: se pierde `loading`/`fetchpriority`
+                  (no existen para background-image) — si el LCP del
+                  primer slide se resiente, la solución es un
+                  `<link rel="preload" as="image">` en el <head>, no
+                  volver a <img>.
+                */}
+                <div
+                  class="absolute inset-0 block bg-cover bg-center md:hidden"
+                  style={`background-image: url('${slide.imageMobile ?? slide.imageDesktop}'); ${backgroundEffectStyle(slide.properties)}`}
+                  role="img"
+                  aria-label={slide.imageAlt}
+                />
+                <div
+                  class="absolute inset-0 hidden bg-cover bg-center md:block lg:hidden"
+                  style={`background-image: url('${slide.imageTablet ?? slide.imageDesktop ?? slide.imageMobile}'); ${backgroundEffectStyle(slide.properties)}`}
+                  role="img"
+                  aria-label={slide.imageAlt}
+                />
+                <div
+                  class="absolute inset-0 hidden bg-cover bg-center lg:block"
+                  style={`background-image: url('${slide.imageDesktop ?? slide.imageMobile}'); ${backgroundEffectStyle(slide.properties)}`}
+                  role="img"
+                  aria-label={slide.imageAlt}
+                />
+              </>
+            ) : (
+              <div class="bg-cicaindigo-900 absolute inset-0" />
+            )}
+
+            {/* Overlay para legibilidad del texto sobre cualquier imagen/video */}
+            <div class="from-cicaindigo-900/85 via-cicaindigo-900/25 to-cicaindigo-900/50 absolute inset-0 bg-gradient-to-t" />
+
+            {/*
+              `position_container` (2026-08-30): posición del contenedor
+              sobre el slide, configurable por slide vía `properties`
+              (9 combinaciones). Reemplaza el anclaje fijo "abajo-centro"
+              anterior — ese sigue siendo el default Y lo que se fuerza
+              siempre por debajo de `3md` (960px, mobile + tablets chicas,
+              clases base sin prefijo, ver `POSITION_CONTAINER_CLASSES`).
+
+              Padding vertical (2026-08-31, mismo pedido del Tech Lead que
+              el padding horizontal de arriba): antes era `pb-*` (solo
+              abajo — asumía anclaje bottom siempre), pero
+              `position_container` también permite `top-*`/`middle-*`, que
+              hasta ahora no tenían ningún aire arriba. Se cambia a `py-*`
+              (arriba Y abajo), fijo por rango en vez de escalonado (valor
+              "por ahora", el Tech Lead puede ajustarlo): `py-[120px]`
+              base (mobile + tablets chicas, <3md/960px) y `3md:py-[150px]`
+              desde 960px en adelante.
+            */}
+            <div
+              class={`relative z-10 flex h-full items-end py-[120px] text-center 3md:py-[150px] ${positionContainerClasses(slide.properties)}`}
+            >
+              {/*
+                Caja "boxed" de contenido (2026-08-31, pedido del Tech
+                Lead): antes el texto quedaba pegado a los extremos del
+                viewport completo (solo `px-6` fijo de 24px en el
+                contenedor de arriba) — en pantallas anchas se veía
+                desalineado respecto al navbar, que sigue la convención de
+                contenido de TODO el sitio: `mx-auto max-w-[1200px] px-4
+                sm:px-6 lg:px-8` (ver comentario en Header.astro, "cada
+                sección/bloque es fullwidth pero su CONTENIDO queda
+                limitado a 1200px centrado"). Se reusa esa misma base acá
+                en vez de inventar otro ancho — el `justify-*` de
+                `position_container` (izquierda/centro/derecha) posiciona
+                el texto DENTRO de esta caja de 1200px, no del viewport
+                completo. `justify-center` va como clase BASE (sin
+                prefijo): es el valor forzado en mobile/tablets chicas
+                (<3md, ver `POSITION_CONTAINER_CLASSES`) y también el
+                fallback mientras no hay ningún `justify-*` explícito de
+                por medio.
+
+                Padding horizontal reforzado desde `3md` (2026-08-31): la
+                convención del navbar (`px-4 sm:px-6 lg:px-8`) alcanza
+                justo para un navbar (fila con logo/links repartidos), pero
+                acá el texto puede quedar anclado a un extremo entero
+                (`position_container` left/right) apenas se libera el
+                forzado de `3md` en adelante, y `mx-auto max-w-[1200px]`
+                recién centra de verdad desde 1200px — se veía pegado al
+                borde. Fijo por rango en vez de escalonado (valor "por
+                ahora", el Tech Lead puede ajustarlo): `px-[60px]` base
+                (mobile + tablets chicas, <3md/960px) y `3md:px-[100px]`
+                desde 960px en adelante — a diferencia de la convención
+                plana del navbar, acá se justifica el padding fijo y
+                generoso porque el contenido sí puede tocar el extremo, el
+                navbar no.
+              */}
+              <div
+                class={`mx-auto flex w-full max-w-[1200px] justify-center px-[60px] 3md:px-[100px] ${positionContainerClasses(slide.properties)}`}
+              >
+                {/*
+                  `align_content` (2026-08-30): alineación del texto/CTA
+                  DENTRO del contenedor, independiente de su posición sobre
+                  el slide. `flex flex-col` para que `items-*` alinee
+                  también el CTA (es `inline-flex`, se comporta como
+                  cualquier otro item del eje transversal).
+                */}
+                <div class={`flex w-full max-w-2xl flex-col items-center text-center ${alignContentClasses(slide.properties)}`}>
+                  {slide.pretitle && (
+                  <p
+                    class="hero-anim-play text-cicagold-500 mb-3 text-sm font-semibold tracking-[0.2em] uppercase"
+                    data-hero-anim="pretitle"
+                  >
+                    {slide.pretitle}
+                  </p>
+                )}
+                {/*
+                  Lato Black Italic (900 italic), ~64px en desktop — valor real
+                  tomado del panel de tipografía del diseño (no estimado). El
+                  manual de marca (Baskerville) es solo para el logo, no aplica acá.
+                  Animación de entrada (2026-08-30, fija para todo el MVP,
+                  no configurable): fade + scale, siempre la primera en
+                  jugar — ver `hero-anim-*` en el <style> de más abajo.
+                */}
+                {slide.title &&
+                  (index === 0 ? (
+                    <h1
+                      class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
+                      data-hero-anim="title"
+                    >
+                      {slide.title}
+                    </h1>
+                  ) : (
+                    // Solo el primer slide usa <h1> (SEO: un único heading principal por
+                    // página) — el resto son <h2> con el mismo estilo visual.
+                    <h2
+                      class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
+                      data-hero-anim="title"
+                    >
+                      {slide.title}
+                    </h2>
+                  ))}
+                {/* Body Large (Design System, pág. Tipografía): Lato Light / 20px */}
+                {slide.subtitle && (
+                  <p class="hero-anim-play mt-4 text-xl font-light text-white/90" data-hero-anim="subtitle">
+                    {slide.subtitle}
+                  </p>
+                )}
+                {/*
+                  CTA — Call to Action (Design System, pág. "btn-link — Sistema
+                  de Botones", "Usado en Hero y secciones de conversión"):
+                  Size 276×56, Padding 12 32, Fill #EFB814/hover #D9A00F,
+                  Border #EFB814 1px inside, Text #2D2C4D/hover #090921,
+                  Font Lato Bold 16/28, Icon 24×24. Radio y sombra quedan
+                  como decisión explícita del Tech Lead (rounded-full en vez
+                  de 12px, una sola sombra en vez de las dos del spec — ver
+                  TASK.md). Mayúsculas vía CSS (`uppercase`), el texto real
+                  del CMS queda en su case original (accesibilidad/semántica).
+                */}
+                {slide.ctaLabel && slide.ctaHref && (
+                  <a
+                    href={slide.ctaHref}
+                    target={slide.ctaTarget}
+                    rel={slide.ctaTarget === '_blank' ? 'noopener noreferrer' : undefined}
+                    class="hero-anim-play border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900 mt-8 inline-flex h-14 items-center justify-center gap-2 rounded-full border px-8 text-base leading-7 font-bold uppercase shadow-xl transition"
+                    data-hero-anim="cta"
+                  >
+                    {slide.ctaLabel}
+                    <Icon name="ph:caret-right" size={24} aria-hidden="true" />
+                  </a>
+                )}
+                </div>
+              </div>
+            </div>
+
+            {/*
+              `decorator_bottom` (2026-08-30): shape configurable por
+              slide (antes era una sola onda fija compartida por todo el
+              slider). Vive DENTRO de cada `.hero-slide` (no afuera, como
+              antes) porque ahora depende de `properties` por slide y debe
+              hacer crossfade junto con el resto del contenido.
+              `decorator_bottom_opacity`: 100 = color sólido (`fill`
+              directo); por debajo de 100 se arma un gradiente propio por
+              slide (id único con `slide.key`) transparente arriba → color
+              abajo, nunca alfa plano sobre color sólido.
+            */}
+            {slide.properties.decorator_bottom && slide.properties.decorator_bottom !== 'none' && (
+              <svg class="absolute bottom-0 left-0 z-10 h-16 w-full" viewBox="0 0 1440 64" preserveAspectRatio="none" aria-hidden="true">
+                {(slide.properties.decorator_bottom_opacity ?? 100) < 100 && (
+                  <defs>
+                    <linearGradient id={`hero-decorator-${slide.key}`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color={slide.properties.decorator_bottom_color ?? '#ffffff'} stop-opacity="0" />
+                      <stop
+                        offset="100%"
+                        stop-color={slide.properties.decorator_bottom_color ?? '#ffffff'}
+                        stop-opacity={(slide.properties.decorator_bottom_opacity ?? 100) / 100}
+                      />
+                    </linearGradient>
+                  </defs>
+                )}
+                <path
+                  d={DECORATOR_PATHS[slide.properties.decorator_bottom]}
+                  fill={
+                    (slide.properties.decorator_bottom_opacity ?? 100) < 100
+                      ? `url(#hero-decorator-${slide.key})`
+                      : (slide.properties.decorator_bottom_color ?? '#ffffff')
+                  }
+                />
+              </svg>
+            )}
+          </div>
+        ))}
+
+        {/*
+          `show_scroll_indicator` (2026-08-31, corregido el mismo día: ya NO
+          es por slide — ver comentario junto a `showScrollIndicator` arriba
+          en el frontmatter). Vive UNA sola vez acá, fuera del `.map()`, dentro
+          del mismo contenedor relativo que las `.hero-slide` (para que
+          `absolute bottom-*` calce con el borde real del Hero) — así no
+          hace crossfade ni se duplica por slide, queda fija SOBREPUESTA al
+          decorador inferior de la slide que esté visible en cada momento
+          (`z-20`, por encima del `z-10` del `<svg>` del decorador). Mismo
+          ícono/color/animación que el del bloque Texto Enriquecido
+          (`RichText.astro`).
+        */}
+        {showScrollIndicator && (
+          <div class="pointer-events-none absolute bottom-2 left-1/2 z-20 -translate-x-1/2 sm:bottom-4" aria-hidden="true">
+            <Icon name="ph:caret-down" class="text-cicagold-500 size-6 animate-bounce" />
+          </div>
+        )}
+
+        {/*
+          Capa de sombra fija para el navbar-glass (2026-08-30, pedido del
+          Tech Lead): gradiente cicaindigo-500 → transparente, SIEMPRE
+          presente encima de cualquier slide (vive fuera del `.map` de
+          arriba, no adentro de cada slide, así no hace crossfade con la
+          imagen — es una sola capa constante). Uniformiza el contraste
+          detrás del navbar flotante sin importar cuán clara/oscura sea la
+          foto de cada slide. Medida de Figma: 341px de alto sobre un
+          frame de 1440 de ancho — cubre navbar + un poco más, se deja
+          fija (no responsive) porque su único trabajo es dar sombra
+          arriba, no seguir el layout del contenido.
+        */}
+        <div
+          class="from-cicaindigo-800/80 pointer-events-none absolute inset-x-0 top-0 z-[5] h-[341px] bg-gradient-to-b to-transparent"
+          aria-hidden="true"
+        />
+      </div>
+
+      {slides.length > 1 && (
+        <>
+          {/*
+            Tamaño reducido en mobile/tablets chicas (2026-08-31, pedido
+            del Tech Lead con captura): `h-14 w-14` (56px) + ícono 32px
+            quedaba grande/pesado en pantallas chicas. Círculo baja a
+            `h-10 w-10` (40px) por debajo de `3md` (960px) y el ícono usa
+            `size-*` de Tailwind (en vez del prop numérico `size` de
+            astro-icon, que es un valor fijo sin variantes responsive)
+            para poder escalar junto con el círculo: `size-5` (20px) base,
+            `3md:size-8` (32px, el valor original) desde 960px.
+          */}
+          <button
+            type="button"
+            class="text-cicagold-500 absolute top-1/2 left-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6 3md:h-14 3md:w-14"
+            data-hero-prev
+            aria-label="Slide anterior"
+          >
+            <Icon name="ph:caret-left" class="size-5 3md:size-8" />
+          </button>
+          <button
+            type="button"
+            class="text-cicagold-500 absolute top-1/2 right-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6 3md:h-14 3md:w-14"
+            data-hero-next
+            aria-label="Slide siguiente"
+          >
+            <Icon name="ph:caret-right" class="size-5 3md:size-8" />
+          </button>
+
+          <div class="absolute bottom-14 left-6 z-20 flex gap-2 sm:left-8" role="tablist" aria-label="Seleccionar slide">
+            {slides.map((_, index) => (
+              <button
+                type="button"
+                class="data-[active=true]:bg-cicagold-500 h-2 w-2 rounded-full bg-white/50 transition-all data-[active=true]:w-6"
+                data-hero-dot
+                data-active={index === 0 ? 'true' : 'false'}
+                role="tab"
+                aria-selected={index === 0 ? 'true' : 'false'}
+                aria-label={`Ir al slide ${index + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+
+    </section>
+  )
+}
+
+<style>
+  /*
+    Animación de entrada del contenido de cada slide (2026-08-30, pedido
+    del Tech Lead) — FIJA para todo el MVP, no configurable vía
+    `properties`: el H1 hace fade+scale primero; pretitle entra deslizando
+    de arriba hacia abajo EN PARALELO con el subtitle deslizando de abajo
+    hacia arriba; el CTA entra deslizando de abajo hacia arriba después de
+    los textos. `hero-anim-play` está presente desde el render inicial en
+    cada elemento (así el primer slide anima solo al cargar la página) y
+    se reinicia por JS (`replayContentAnimation`, ver <script> más abajo)
+    cada vez que `show()` activa otro slide.
+
+    `[data-hero-anim]{ opacity: 1 }` es el estado final/de fallback: sin
+    `prefers-reduced-motion: no-preference` (o si el navegador no soporta
+    animations) el contenido simplemente se ve en su posición final, sin
+    animar — degradación segura.
+  */
+  [data-hero-anim] {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-anim-play[data-hero-anim='title'] {
+      animation: hero-fade-scale 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    .hero-anim-play[data-hero-anim='pretitle'] {
+      animation: hero-slide-down 600ms ease-out 150ms both;
+    }
+    .hero-anim-play[data-hero-anim='subtitle'] {
+      animation: hero-slide-up 600ms ease-out 150ms both;
+    }
+    .hero-anim-play[data-hero-anim='cta'] {
+      animation: hero-slide-up 600ms ease-out 650ms both;
+    }
+  }
+
+  @keyframes hero-fade-scale {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes hero-slide-down {
+    from {
+      opacity: 0;
+      transform: translateY(-16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes hero-slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+</style>
+
+<script>
+  // Carousel vanilla JS — sin dependencias, un listener por instancia
+  // (soporta más de un [data-hero-slider] en la misma página, aunque hoy
+  // solo se use en el hero de home). Respeta prefers-reduced-motion y
+  // pausa el auto-avance en hover/foco por accesibilidad.
+  function initHeroSliders() {
+    const roots = document.querySelectorAll('[data-hero-slider]');
+
+    roots.forEach((root) => {
+      if (!(root instanceof HTMLElement) || root.dataset.heroInitialized === 'true') return;
+      root.dataset.heroInitialized = 'true';
+
+      const slides = Array.from(root.querySelectorAll('[data-hero-slide]'));
+      const dots = Array.from(root.querySelectorAll('[data-hero-dot]'));
+      const prevBtn = root.querySelector('[data-hero-prev]');
+      const nextBtn = root.querySelector('[data-hero-next]');
+
+      if (slides.length <= 1) return;
+
+      const intervalMs = Number.parseInt(root.style.getPropertyValue('--hero-interval'), 10) || 6000;
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      let current = 0;
+      let timer: number | undefined;
+
+      // Animación de entrada (2026-08-30, fija para el MVP): título/pretitle/
+      // subtitle/CTA ya tienen `hero-anim-play` desde el render inicial (así
+      // el primer slide anima solo, sin esperar un `show()`). Al activar
+      // OTRO slide via `show()`, se reinicia forzando un reflow (leer
+      // `offsetWidth` entre quitar y volver a poner la clase) — si no, el
+      // navegador no vuelve a disparar la animación CSS porque la clase
+      // "ya estaba puesta" desde su punto de vista.
+      function replayContentAnimation(slideEl: Element) {
+        slideEl.querySelectorAll('[data-hero-anim]').forEach((el) => {
+          el.classList.remove('hero-anim-play');
+          void (el as HTMLElement).offsetWidth;
+          el.classList.add('hero-anim-play');
+        });
+      }
+
+      function show(index: number) {
+        const next = ((index % slides.length) + slides.length) % slides.length;
+        if (next === current) return;
+
+        slides[current].classList.add('opacity-0', 'pointer-events-none');
+        slides[current].classList.remove('opacity-100');
+        slides[current].setAttribute('aria-hidden', 'true');
+
+        slides[next].classList.remove('opacity-0', 'pointer-events-none');
+        slides[next].classList.add('opacity-100');
+        slides[next].setAttribute('aria-hidden', 'false');
+        replayContentAnimation(slides[next]);
+
+        if (dots[current]) {
+          dots[current].setAttribute('data-active', 'false');
+          dots[current].setAttribute('aria-selected', 'false');
+        }
+        if (dots[next]) {
+          dots[next].setAttribute('data-active', 'true');
+          dots[next].setAttribute('aria-selected', 'true');
+        }
+
+        current = next;
+      }
+
+      function stop() {
+        if (timer) window.clearInterval(timer);
+        timer = undefined;
+      }
+
+      function start() {
+        if (prefersReducedMotion) return;
+        stop();
+        timer = window.setInterval(() => show(current + 1), intervalMs);
+      }
+
+      prevBtn?.addEventListener('click', () => {
+        show(current - 1);
+        start();
+      });
+      nextBtn?.addEventListener('click', () => {
+        show(current + 1);
+        start();
+      });
+      dots.forEach((dot, index) => {
+        dot.addEventListener('click', () => {
+          show(index);
+          start();
+        });
+      });
+
+      root.addEventListener('mouseenter', stop);
+      root.addEventListener('mouseleave', start);
+      root.addEventListener('focusin', stop);
+      root.addEventListener('focusout', start);
+
+      start();
+    });
+  }
+
+  initHeroSliders();
+  // Astro View Transitions no está en uso en este proyecto (ver
+  // BaseLayout.astro), pero por si Antigravity lo suma más adelante, este
+  // hook re-inicializa el carousel tras una navegación client-side.
+  document.addEventListener('astro:page-load', initHeroSliders);
+</script>

@@ -1,0 +1,28 @@
+/// <reference path="../.astro/types.d.ts" />
+/// <reference types="astro/client" />
+
+interface ImportMetaEnv {
+  /** URL base del API Stamless, sin /v1/{tenant_slug}. Solo build time. */
+  readonly STAMLESS_API_URL: string;
+  /** Slug del tenant (fijo: 'cica360' para este proyecto). */
+  readonly STAMLESS_TENANT_SLUG: string;
+  /** Token Bearer con ability content:read. SOLO build time — nunca exponer. */
+  readonly STAMLESS_API_TOKEN: string;
+  /**
+   * Último recurso para desarrollo local sin certificado confiable
+   * (mkcert). Desactiva la verificación TLS del build. Default: sin
+   * definir. Ver "TLS local con mkcert" en el README antes de usar esto.
+   */
+  readonly STAMLESS_DEV_INSECURE_TLS?: string;
+
+  /** URL pública final del sitio. */
+  readonly PUBLIC_SITE_URL: string;
+  /** Endpoint al que postea el ContactForm (proxy PHP por defecto). */
+  readonly PUBLIC_CONTACT_FORM_ENDPOINT: string;
+  /** Token acotado (forms:submit) — solo si no hay proxy PHP disponible. */
+  readonly PUBLIC_STAMLESS_FORMS_TOKEN?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

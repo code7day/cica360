@@ -1,0 +1,33 @@
+---
+/** Stub funcional — presentacional puro, sin JS. */
+import type { Block } from '../../lib/types';
+
+interface FeatureItem {
+  title?: string;
+  subtitle?: string;
+  image?: { url: string | null; alt_text: string | null } | null;
+}
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as { items?: FeatureItem[] };
+const items = content.items ?? [];
+---
+
+<section class="mx-auto max-w-6xl px-4 py-16">
+  {block.title && <h2 class="mb-8 text-center text-3xl font-bold">{block.title}</h2>}
+  <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      items.map((item) => (
+        <div class="text-center">
+          {item.image?.url && <img src={item.image.url} alt={item.image.alt_text ?? ''} class="mx-auto mb-4 h-12 w-12" loading="lazy" />}
+          {item.title && <h3 class="text-lg font-semibold">{item.title}</h3>}
+          {item.subtitle && <p class="mt-1 text-sm text-gray-600">{item.subtitle}</p>}
+        </div>
+      ))
+    }
+  </div>
+</section>

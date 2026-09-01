@@ -1,0 +1,322 @@
+---
+/**
+ * Split Imagen y Texto (`split`) — implementado 2026-08-31 a pedido
+ * directo del Tech Lead (mockup de referencia: "¿Qué hacemos?"/"¿A quién
+ * nos dirigimos?" en la home, imagen a un lado y texto al otro,
+ * alternando), cruzando puntualmente el límite Claude=datos/Antigravity=
+ * visual descrito en CLAUDE.md — mismo criterio ya usado en Hero.astro/
+ * RichText.astro. Antes era un stub genérico (imagen siempre a la derecha,
+ * sin leer `media_position` ni `properties`).
+ *
+ * `media_position` (`left`/`right`, en `content`, NO en `properties` — ver
+ * ADR-031 en genesis/DECISIONS.md: había un campo duplicado
+ * `properties.media_position` sin consumidor, se eliminó del lado
+ * backend) decide de qué lado va la imagen en desktop (`md:` en
+ * adelante); en mobile el orden natural del DOM siempre pone la imagen
+ * primero, sin importar `media_position` — mismo criterio de "mobile
+ * fuerza un layout simple" que ya usan Hero/Slide.
+ *
+ * `links` es un array completo (no un solo CTA — `LinkSchema::make()`,
+ * repeater multi-enlace, a diferencia del enlace único de `rich_text`),
+ * se renderizan todos en fila.
+ */
+import type { Block, ContentLink } from '../../lib/types';
+import { Icon } from 'astro-icon/components';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+interface SplitContent {
+  media?: { url: string | null; alt_text: string | null } | null;
+  media_position?: 'left' | 'right';
+  body?: string;
+}
+
+interface SplitProperties {
+  background_color?: string | null;
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /**
+   * `content_width` (2026-08-31): antes el contenedor era un cap fijo de
+   * 1200px sin property que lo controlara. El Tech Lead mandó una captura
+   * del sitio real y aclaró qué significa "fullwidth" acá — a diferencia
+   * de RichText (donde `full` es un contenedor simétrico con 80px de
+   * padding en ambos lados), en `split` la imagen debe llegar hasta el
+   * borde real del viewport (bleed, cero padding de ESE lado) mientras
+   * que la columna de TEXTO conserva el padding de 80px del lado que da
+   * al borde — mismo valor que usa RichText.astro para su variante
+   * `full`, así el ritmo se siente igual, pero acá aplicado asimétrico:
+   * solo del lado de adentro (el gap del grid) no hace falta, ya lo da
+   * `gap-10`/`gap-16`. `boxed`/`narrow` siguen el patrón simétrico
+   * estándar (contenedor centrado, padding igual en ambos lados).
+   */
+  content_width?: 'full' | 'boxed' | 'narrow';
+  /**
+   * Registrado en Studio (`PropertiesSchema`) pero SIN consumidor real
+   * todavía en ningún bloque del frontend (tampoco en Hero/RichText) —
+   * requeriría un Intersection Observer para animar al entrar en
+   * viewport. Fuera de alcance de esta implementación; se deja tipado
+   * para no perder la property si se decide conectarla más adelante.
+   */
+  animation?: 'none' | 'fade' | 'slide-up';
+  /**
+   * Filtros/efectos de la imagen (`media_*`, 2026-08-31) — mismo set que
+   * `slide_background_*` de Hero.astro (blend mode + brillo + opacidad +
+   * los 6 filtros CSS clásicos), generalizado sin el prefijo "slide"
+   * porque acá vive en un bloque de contenido normal, no en el Hero.
+   */
+  media_blend_mode?: string | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_radius?: 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+}
+
+const content = (block.content as SplitContent) ?? {};
+const properties = (block.properties as SplitProperties) ?? {};
+const links: ContentLink[] = block.links ?? [];
+const mediaOnRight = content.media_position === 'right';
+
+// Mismo ritmo de padding vertical que usa RichText.astro — un solo lugar
+// con la escala, para que `padding_y` se sienta igual en todos los
+// bloques de sección completa.
+const PADDING_Y_CLASSES: Record<NonNullable<SplitProperties['padding_y']>, string> = {
+  sm: 'py-8 3md:py-10',
+  md: 'py-0 3md:py-0',
+  lg: 'py-16 3md:py-24',
+  xl: 'py-20 3md:py-32',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'md'];
+
+// `boxed`/`narrow`: contenedor centrado con padding simétrico, mismo
+// criterio que RichText.astro (aunque acá sin nivel CONTENIDO separado —
+// el grid de 2 columnas llena el contenedor entero, un solo mapa alcanza).
+// `full` NO lleva max-width/padding acá: se resuelve aparte, ver
+// `textEdgePaddingClass` más abajo — el padding de esa variante es
+// asimétrico (solo del lado del texto), no algo que un mapa por-variante
+// simple pueda expresar.
+const CONTAINER_WIDTH_CLASSES: Record<NonNullable<SplitProperties['content_width']>, string> = {
+  boxed: 'max-w-[1280px] px-4 sm:px-6 lg:px-8',
+  narrow: 'max-w-[960px] px-4 sm:px-6 lg:px-8',
+  full: 'max-w-none px-0',
+};
+const contentWidth = properties.content_width ?? 'boxed';
+const containerWidthClass = CONTAINER_WIDTH_CLASSES[contentWidth];
+const isFullWidth = contentWidth === 'full';
+
+// En `full`, la imagen llega hasta el borde del viewport (bleed) y la
+// columna de texto conserva el padding de 80px SOLO del lado que da al
+// borde — el lado que da al gap del grid no necesita nada extra. El lado
+// depende de `mediaOnRight`: si la imagen está a la derecha, el texto
+// quedó a la izquierda y su borde "de afuera" es el izquierdo.
+const textEdgePaddingClass = isFullWidth
+  ? mediaOnRight
+    ? 'pl-10 3md:pl-[80px] py-10 md:py-0 pr-12'
+    : 'pl-12 py-10 md:py-0 pr-10 3md:pr-[80px]'
+  : '';
+
+// Mismos 4 estilos de botón que RichText.astro (`link.type`), para que un
+// CTA se vea igual sin importar en qué bloque aparezca.
+const LINK_STYLE_CLASSES: Record<string, string> = {
+  primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
+  outline: 'border-cicaindigo-500 bg-transparent text-cicaindigo-500 hover:bg-cicaindigo-500 hover:text-white',
+  text: 'border-transparent bg-transparent text-cicaindigo-500 underline-offset-4 hover:underline',
+};
+
+// Achique responsive en el rango `md`→`3md` (768-960px, 2026-08-31): en
+// ese rango el grid ya pasó a 2 columnas pero la columna de texto todavía
+// es angosta (no llegó a `3md`/960px, donde recién hay aire de sobra) —
+// título/subtítulo/cuerpo/botón se veían sobredimensionados para el
+// espacio real disponible (mismo síntoma que reportó el Tech Lead con
+// captura en tablet). Patrón: tamaño normal en mobile (una sola columna,
+// con espacio de sobra) → se achica en `md` → vuelve al tamaño normal en
+// `3md` (columna ya tiene ancho suficiente de nuevo). El botón repite
+// explícito el tamaño "lg" (el único que usa `split`, no tiene
+// `properties.link_size` como `rich_text`) con el prefijo `3md:` para
+// revertir el achique de `md:`.
+// Corrección (mismo día): el revert a partir de `3md` volvía al MISMO
+// tamaño que `sm:` (desktop), y el Tech Lead lo vio muy grande — no solo
+// en el rango `md`-`3md` sino en general, sensación de "vuelve a como
+// estaba en desktop" de golpe. Se bajó un escalón: `3md` ya no repite el
+// tamaño original, asienta en uno intermedio (no vuelve a crecer más
+// arriba de `3md`, no hay otro breakpoint que lo suba de nuevo).
+const TITLE_RESPONSIVE_CLASS = 'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl';
+// Subtítulo: mismo criterio — desde `md` en adelante queda en `text-base`
+// ("medio"), ya no vuelve a `text-lg` en `3md` (antes sí).
+const SUBTITLE_RESPONSIVE_CLASS = 'text-lg font-light text-gray-500 md:text-base';
+// NOTA: `@tailwindcss/typography` no está instalado en este proyecto (sin
+// `prose-sm`/`prose-base` reales, `prose` es un no-op acá — confirmado:
+// no está en `package.json` ni hay `@plugin`/`.prose` custom en
+// `global.css`). En vez de depender de esas clases (no harían nada), el
+// achique usa `text-*` explícito directo sobre el wrapper — como los
+// hijos (`<p>`/`<ul>`/`<li>` del HTML de `content.body`) no fijan su
+// propio tamaño, heredan el del wrapper.
+// Corrección 2 (mismo día): "Lato Black" (900) se veía demasiado — vuelve
+// a bold (700) nomás. En su lugar, el contraste real lo da un gris más
+// oscuro que el del cuerpo (`gray-800` vs `gray-600` del párrafo) —
+// contraste "entre grises", no solo de peso. Ambos forzados explícitos en
+// el `<style>` de abajo (`<strong>`/`<b>` del RichEditor).
+const BODY_RESPONSIVE_CLASS = 'prose max-w-none font-normal text-base text-gray-600 md:text-sm 3md:text-base';
+
+// Viñetas "DOT grande" (2026-08-31, pedido del Tech Lead con mockup —
+// simplificación a propósito de una idea anterior con íconos reemplazables
+// por tipo, "para no hacerlo muy complicado"): el `<ul><li>` de
+// `content.body` es HTML libre del RichEditor, sin clase propia para
+// engancharle un ícono real por `<li>`. En vez de eso, un solo punto
+// (círculo) más grande que el bullet nativo del navegador, mismo color
+// que el texto (`currentColor`) — sin properties nuevas, sin JS, aplica
+// siempre. Ver el `<style>` al final del archivo (`:global()` porque el
+// scoping de Astro no llega al HTML inyectado por `set:html`).
+const BUTTON_RESPONSIVE_CLASS = 'h-11 gap-2 px-6 text-sm md:h-9 md:gap-1.5 md:px-4 md:text-xs 3md:h-11 3md:gap-2 3md:px-6 3md:text-sm';
+
+const sectionStyle = [
+  properties.background_color ? `background-color: ${properties.background_color};` : '',
+  properties.text_color ? `color: ${properties.text_color};` : '',
+]
+  .join(' ')
+  .trim();
+
+// Bordes de la imagen — misma escala real de Tailwind que `LINK_RADIUS_CLASSES`
+// de RichText.astro (`rounded-xs`…`rounded-full`), más `none` explícito ya
+// que acá el default visual es sin redondear (no rompe el look actual de
+// nada ya sembrado).
+const MEDIA_RADIUS_CLASSES: Record<NonNullable<SplitProperties['media_radius']>, string> = {
+  none: 'rounded-none',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  full: 'rounded-full',
+};
+const mediaRadiusClass = MEDIA_RADIUS_CLASSES[properties.media_radius ?? 'none'];
+
+/**
+ * Filtros/efectos de la imagen (`media_*`), mismo patrón que
+ * `backgroundEffectStyle()` de Hero.astro: un solo `style` combinando
+ * `filter` (los 6 filtros CSS aplicables), `opacity` y `mix-blend-mode`.
+ */
+function mediaEffectStyle(props: SplitProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const mediaStyle = mediaEffectStyle(properties);
+---
+
+<section class="w-full" style={sectionStyle || undefined}>
+  {
+    /* `boxed`/`narrow`: contenedor centrado con padding simétrico (mismo
+      cap que usan Header/Hero para su fila interna en `boxed`, ver
+      comentario en Header.astro). `full`: sin cap ni padding acá — la
+      imagen bleedea hasta el borde del viewport, el texto lleva su propio
+      padding asimétrico (`textEdgePaddingClass`, ver frontmatter). */
+  }
+  <div class={`mx-auto w-full ${containerWidthClass} ${paddingYClass}`}>
+    <div class="grid items-center gap-0 md:grid-cols-2 md:gap-0">
+      {
+        content.media?.url && (
+          <div class={mediaOnRight ? 'md:order-2' : undefined}>
+            <img
+              src={content.media.url}
+              alt={content.media.alt_text ?? block.title ?? ''}
+              class={`h-full w-full object-cover ${mediaRadiusClass}`}
+              style={mediaStyle}
+              loading="lazy"
+            />
+          </div>
+        )
+      }
+
+      <div class={`flex flex-col gap-4 ${mediaOnRight ? 'md:order-1' : ''} ${textEdgePaddingClass}`}>
+        {block.pretitle && <p class="text-cicagold-600 text-sm font-light tracking-[0.2em] uppercase">{block.pretitle}</p>}
+        {block.title && <h2 class={`text-cicaindigo-500 ${TITLE_RESPONSIVE_CLASS}`}>{block.title}</h2>}
+        {block.subtitle && <p class={SUBTITLE_RESPONSIVE_CLASS}>{block.subtitle}</p>}
+        {content.body && <div class={`split-body ${BODY_RESPONSIVE_CLASS}`} set:html={content.body} />}
+
+        {
+          links.length > 0 && (
+            <div class="mt-2 flex flex-wrap gap-3">
+              {links.map((link) => (
+                <a
+                  href={link.href ?? '#'}
+                  target={link.target}
+                  rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+                  class={`inline-flex items-center justify-center rounded-lg border font-bold tracking-[0.1em] uppercase transition ${BUTTON_RESPONSIVE_CLASS} ${LINK_STYLE_CLASSES[link.type] ?? LINK_STYLE_CLASSES.primary}`}
+                >
+                  {link.label}
+                  <Icon name="ph:plus" size={18} aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          )
+        }
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Espaciado entre párrafos (2026-08-31, pedido del Tech Lead: "no sé si
+     eso viene en prose" — no, `@tailwindcss/typography` no está instalado
+     en este proyecto, ver nota de `BODY_RESPONSIVE_CLASS` en el
+     frontmatter — sin el plugin, los `<p>` no tienen espaciado propio,
+     quedan pegados). `:last-child` en 0 para no sumar aire de más antes
+     del cierre del bloque (el `<ul>` de abajo, si lo hay, ya trae su
+     propio `margin-block`). */
+  .split-body :global(p) {
+    margin-bottom: 0.75em;
+  }
+  .split-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .split-body :global(strong),
+  .split-body :global(b) {
+    font-weight: 700;
+    color: var(--color-gray-800);
+  }
+
+  /* Viñetas "DOT grande" — ver comentario de `BODY_RESPONSIVE_CLASS` en el
+     frontmatter. `:global()` porque `content.body` es HTML inyectado vía
+     `set:html`, fuera del alcance del scoping automático de Astro. */
+  .split-body :global(ul) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    list-style: none;
+    margin-block: 0.5em;
+    padding-left: 0;
+  }
+  .split-body :global(li) {
+    position: relative;
+    padding-left: 1.5em;
+  }
+  .split-body :global(li)::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.5em;
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 9999px;
+    background-color: currentColor;
+  }
+</style>

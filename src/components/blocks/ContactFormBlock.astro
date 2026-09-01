@@ -1,0 +1,27 @@
+---
+/**
+ * Único bloque que carga JS real en el cliente (isla React) — ver
+ * docs/context/ARCHITECTURE.md §4. `client:visible` en vez de `client:load`:
+ * no hidrata hasta que el bloque entra en viewport, así que si el form
+ * está más abajo en la página no paga el costo de hidratación desde el
+ * primer render.
+ */
+import type { Block } from '../../lib/types';
+import ContactForm from '../islands/ContactForm';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+---
+
+<section class="mx-auto max-w-xl px-4 py-16">
+  {block.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{block.pretitle}</p>}
+  {block.title && <h2 class="text-3xl font-bold">{block.title}</h2>}
+  {block.subtitle && <p class="mt-2 text-gray-600">{block.subtitle}</p>}
+
+  <div class="mt-8">
+    <ContactForm client:visible />
+  </div>
+</section>

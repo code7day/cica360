@@ -1,0 +1,59 @@
+---
+/**
+ * Despacha cada `block.type` a su componente. Tipos desconocidos se
+ * ignoran sin romper la página (requisito explícito del contrato de
+ * bloques, ver docs/context/TASK.md) — el backend puede agregar tipos
+ * nuevos sin coordinar un deploy simultáneo de este front.
+ */
+import type { Block } from '../../lib/types';
+
+import Hero from './Hero.astro';
+import RichText from './RichText.astro';
+import ImageBlock from './ImageBlock.astro';
+import Cta from './Cta.astro';
+import Features from './Features.astro';
+import Faq from './Faq.astro';
+import ContactFormBlock from './ContactFormBlock.astro';
+import LegalNotice from './LegalNotice.astro';
+import Heading from './Heading.astro';
+import Split from './Split.astro';
+import Testimonials from './Testimonials.astro';
+import Logos from './Logos.astro';
+import ServicesGrid from './ServicesGrid.astro';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+// `any` a propósito: Astro no expone un tipo público estable para
+// referenciar componentes `.astro` genéricos en un mapa dinámico como
+// este — tipar como `unknown` hace que el compilador de Astro rechace la
+// invocación `<Component />` (ts 2604, "not a valid component").
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const componentsByType: Record<string, any> = {
+  hero: Hero,
+  rich_text: RichText,
+  image: ImageBlock,
+  cta: Cta,
+  features: Features,
+  faq: Faq,
+  contact_form: ContactFormBlock,
+  legal_notice: LegalNotice,
+  heading: Heading,
+  split: Split,
+  testimonials: Testimonials,
+  logos: Logos,
+  services_grid: ServicesGrid,
+};
+
+const Component = componentsByType[block.type];
+
+if (!Component && import.meta.env.DEV) {
+  // eslint-disable-next-line no-console
+  console.warn(`[BlockRenderer] Tipo de bloque desconocido, se ignora: "${block.type}" (uuid ${block.uuid}).`);
+}
+---
+
+{Component && <Component block={block} />}

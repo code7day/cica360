@@ -1,0 +1,81 @@
+---
+/**
+ * Layout base — scaffold funcional mínimo (sin diseño visual final).
+ * Antigravity: este es el punto de partida para el layout real de
+ * CICA360 (ver docs/context/TASK.md, Fase 2). Mantener:
+ * - El <slot /> principal y los props de SEO (title/description).
+ * - Que Header/Footer sigan recibiendo el menú ya resuelto (no agregar
+ *   fetch propio acá — eso es responsabilidad de src/lib/api.ts).
+ */
+import '../styles/global.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { getMenu } from '../lib/api';
+
+interface Props {
+  title: string;
+  description?: string | null;
+}
+
+const { title, description } = Astro.props;
+
+// Menú principal resuelto una vez por página, en build time — se pasa
+// como prop a Header/Footer en vez de que cada uno haga su propio fetch.
+const menu = await getMenu('menu-principal').catch(() => null);
+
+const siteName = 'CICA360';
+const pageTitle = title === siteName ? title : `${title} — ${siteName}`;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{pageTitle}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="canonical" href={Astro.url.href} />
+    <meta name="robots" content="index, follow" />
+    <meta name="generator" content={Astro.generator} />
+
+    <!--
+      Tipografía del SITIO: Lato (Google Font), normal e itálica en varios
+      pesos — confirmado por el Tech Lead, distinto de la tipografía del
+      manual de marca (Baskerville Old Face es solo para el logo/isotipo,
+      no se carga acá). El título del Hero usa Lato Black Italic (900
+      italic) — ver src/styles/global.css.
+      `preconnect` + swap para no bloquear el render por fuentes (ver
+      ARCHITECTURE.md §7, performance). Antigravity: reemplazar por
+      self-hosted (`@fontsource/lato`) para no depender de
+      fonts.googleapis.com en producción.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
+    />
+
+    <!-- Antigravity: favicon/OG image reales pendientes -->
+    <meta property="og:title" content={pageTitle} />
+    {description && <meta property="og:description" content={description} />}
+    <meta property="og:type" content="website" />
+
+    <!--
+      A propósito, sin `<ClientRouter />` (ex `<ViewTransitions />`) acá:
+      agrega un runtime JS de ruteo cliente para todo el sitio, contra la
+      filosofía de "JS mínimo" del proyecto (ver ARCHITECTURE.md §2/§4).
+      El soporte nativo de View Transitions de los navegadores modernos ya
+      cubre transiciones simples con CSS puro, sin JS — si Antigravity
+      necesita algo más, evaluar `@view-transition { navigation: auto; }`
+      en global.css antes de sumar el componente de Astro.
+    -->
+  </head>
+  <body class="flex min-h-screen flex-col">
+    <Header menu={menu} />
+    <main class="flex-1">
+      <slot />
+    </main>
+    <Footer menu={menu} />
+  </body>
+</html>

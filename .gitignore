@@ -1,0 +1,20 @@
+# dependencias
+node_modules/
+
+# build
+dist/
+.astro/
+
+# env / secretos — NUNCA commitear
+.env
+.env.*
+!.env.example
+public/contacto.config.php
+
+# editor / SO
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+npm-debug.log*

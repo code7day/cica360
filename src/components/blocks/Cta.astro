@@ -1,0 +1,34 @@
+---
+/** Stub funcional — presentacional puro, sin JS. */
+import type { Block } from '../../lib/types';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as { body?: string };
+---
+
+<section class="bg-gray-50 px-4 py-16 text-center">
+  <div class="mx-auto max-w-2xl">
+    {block.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{block.pretitle}</p>}
+    {block.title && <h2 class="text-3xl font-bold">{block.title}</h2>}
+    {block.subtitle && <p class="mt-2 text-lg text-gray-600">{block.subtitle}</p>}
+    {content.body && <p class="mt-4 text-gray-700">{content.body}</p>}
+
+    <div class="mt-6 flex justify-center gap-4">
+      {
+        block.links.map((link) => (
+          <a
+            href={link.href ?? '#'}
+            target={link.target}
+            class={link.type === 'primary' ? 'rounded bg-gray-900 px-6 py-3 font-medium text-white' : 'rounded border border-gray-300 px-6 py-3 font-medium'}
+          >
+            {link.label}
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</section>

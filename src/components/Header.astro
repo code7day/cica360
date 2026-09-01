@@ -1,0 +1,953 @@
+---
+/**
+ * Header — navbar flotante con 2 estados, montado "sobre" el Hero
+ * (position: fixed, no empuja el contenido). Un solo componente para los
+ * dos estados del Design System oficial (CICA360.pdf, pág. 5, "Navbar —
+ * Barra de Navegación"): "Comparten la misma estructura: logo-main +
+ * enlaces de menú (btn-link) + CTA 'Consultar ahora'. Se diferencian por
+ * fondo, efecto y variante de botones (dark vs light)":
+ *
+ *   - navbar-glassy: fondo cicaindigo-900 al 20% + glass (blur 20px),
+ *     logo dorado sin chip, links "Menu Dark" (texto blanco), CTA
+ *     "Menu CTA Dark" (fondo blanco al 10%). Flota inset de los bordes,
+ *     forma de pill (`rounded-full`).
+ *   - navbar-sticky: fondo blanco al 95%, glass apagado, fullwidth (sin
+ *     inset, sin rounded — edge to edge), logo blanco DENTRO de un chip
+ *     rectangular indigo-900 (necesita el fondo oscuro para leerse sobre
+ *     blanco), links "Menu" (texto indigo-500), CTA "Menu CTA" (fondo
+ *     cicaindigo-100), sombra más marcada para separarse del contenido
+ *     de la página (2026-08-30, feedback visual — la sombra tenue
+ *     original no se notaba lo suficiente).
+ *
+ * Barra de progreso de scroll (2026-08-30, reubicada): NO va pegada al
+ * navbar — hacía "ruido" visual, se leía como una línea suelta debajo
+ * de la pill/barra sticky, encima del contenido de la página. Ahora es
+ * un elemento independiente, `fixed` al borde inferior del VIEWPORT
+ * (no del navbar), patrón estándar de "reading progress bar" (ver
+ * markup al final del componente, fuera de `data-glass-bar`).
+ *
+ * Regla de negocio del Tech Lead (2026-08-27): el estado glassy **solo
+ * aparece en Home** — es la única página con una foto de fondo oscura
+ * detrás (el Hero) que justifica el vidrio. En cualquier página interior
+ * el navbar arranca YA en modo sticky (blanco, fullwidth, con sombra),
+ * sin fase glassy. En Home, se permite scrollear ~200px antes de
+ * transicionar (para que se aprecie el detalle del vidrio/refracción —
+ * y que el navbar-glass se luzca más tiempo sobre los fondos del
+ * slider) y ahí pasa a sticky con una transición suave tipo "líquido
+ * imantado" (cubic-bezier con ligero overshoot, ver `--ease-magnetic`
+ * más abajo). Hay un paso intermedio a los 150px (`data-approaching`,
+ * ver wrapper exterior) donde solo el margen superior se acerca
+ * (`pt-7`→`pt-4`), la pill sigue 100% glassy — así el salto final a
+ * fullwidth en 200px es más chico/suave.
+ *
+ * Convención de layout DE TODO EL SITIO (Tech Lead, 2026-08-27): cada
+ * sección/bloque es fullwidth (fondo/efecto ocupa el 100% del viewport)
+ * pero su CONTENIDO queda limitado a 1200px centrado
+ * (`mx-auto max-w-[1200px] px-4 sm:px-6 lg:px-8`) — el navbar sticky
+ * (fondo blanco fullwidth + fila de contenido a 1200px, con el chip del
+ * logo como primer elemento de esa fila) es el primer componente que fija
+ * este patrón; Antigravity debe reusarlo en cada bloque nuevo, no
+ * reinventar otro ancho de contenido.
+ *
+ * "Refracción 0.79" del spec es un término de la herramienta de diseño
+ * (shader de glass) sin propiedad CSS 1:1 — aproximado con
+ * backdrop-blur + backdrop-saturate.
+ *
+ * Specs exactas usadas (Design System pág. 4, "Menu — Navegación Light/
+ * Dark" y "Menu CTA — Nav CTA Light/Dark"):
+ *   Link default: padding 8 20, radius 30px, font Lato Light 16.
+ *     Light: fill transparent / text #2D2C4D. Dark: fill transparent / text #FFFFFF.
+ *   Link hover:   fill #625B82 (cicaindigo-400), text #FFFFFF, radius 100px, font Lato Regular 16 (ambas variantes).
+ *   Link active:  fill #2D2C4D (cicaindigo-500), text #FFFFFF, radius 100px, font Lato Regular 16 (ambas variantes).
+ *   CTA light:    size 204×40 (medido en frame sticky), padding 12 24, radius 40px, fill #E8E4ED (cicaindigo-100) / text #2D2C4D, font Lato Italic 20, icon 16×16.
+ *                 hover: fill #D9A00F (cicagold-600) / text #FFFFFF.
+ *   CTA dark:     size 204×48 (medido en frame glassy — más alto que el light), padding 12 24, radius 30px, fill #FFFFFF 10% / text #FFFFFF, font Lato Italic 20, icon 16×16.
+ *                 hover: fill #EFB814 (cicagold-500) / text #2D2C4D.
+ * (30px/40px de radius en una pill de 36-48px de alto ya se ve full-pill
+ * en la práctica — se implementa como `rounded-full` para simplificar.)
+ *
+ * Dimensiones exactas medidas en Figma (2026-08-30, screenshots del Tech
+ * Lead — "adaptar" = hug/auto, ancho fijo cuando no dice "adaptar"):
+ *   Barra completa (glassy):  1280 (fijo) × 60 (fijo).
+ *   Barra completa (sticky):  fullwidth (= ancho del viewport/frame) × 60 (fijo) — misma altura en ambos estados, sin salto de layout.
+ *   Fila de contenido:        1200 (fijo, la convención del sitio, SOLO en sticky) × 60 (= alto de la barra).
+ *   Link nav (activo/normal): ancho hug (121 en "SERVICIOS" glassy, 132 en "SOBRE CICA" sticky) × 36 (fijo) — igual en ambos estados.
+ *   Logo (sticky, con chip):  118 (fijo) × 40 (fijo) — chip rectangular de tamaño fijo, no bleed.
+ *   CTA (glassy):              204 (hug) × 48 (hug).
+ *   CTA (sticky):               204 (hug) × 40 (hug).
+ * Traducido a Tailwind: alturas como clases `h-*` explícitas (no
+ * `py-*` + line-height implícito) para que el resultado sea exacto y no
+ * dependa de la métrica de la fuente; anchos "hug" se dejan sin clase de
+ * ancho (el padding + contenido ya los produce).
+ *
+ * Ajuste manual del Tech Lead sobre el estado GLASSY (2026-08-30, tras
+ * comparar contra la expectativa visual — pisa los números literales de
+ * Figma a propósito, no es un error):
+ *   - Fila de contenido en glassy: `px-0` (sin padding propio) — el
+ *     contenido llega hasta el padding de la propia pill (`px-1.5` en
+ *     `data-glass-bar`), bastante más ceñido que el cap de 1200/padding
+ *     grande que se había probado antes.
+ *   - Logo en glassy: slot de `w-[200px]` (no 107) con el logo
+ *     alineado a la izquierda (`justify-start`, `px-5` interno) en vez de
+ *     centrado en una caja angosta — da aire al wordmark sin que quede
+ *     apretado contra el link "SOBRE CICA". En sticky el logo sigue
+ *     centrado en su chip fijo de 118×40, sin cambios.
+ *   - Wrapper exterior: `px-2` en glassy (antes 0) — un margen mínimo de
+ *     seguridad para viewports angostos, colapsa a `px-0` en sticky.
+ *
+ * Logo: 3 SVG reales provistos por el Tech Lead (`public/logos/`), con
+ * los `fill` reales inspeccionados (no a ojo) para el mapeo:
+ *   `logo-main-gold`  — wordmark dorado + acento gris → navbar-glassy (sin chip).
+ *   `logo-main-white` — wordmark blanco + acento dorado → DENTRO del chip
+ *                        oscuro del navbar-sticky, y reservado para el Footer.
+ *   `logo-main-gray`  — todo en gris-azulado plano → sin uso todavía (queda
+ *                        disponible si un contexto futuro lo pide).
+ *
+ * CTA: el contrato de `MenuItem` (`src/lib/types.ts`) no trae un flag
+ * "es CTA" — se asume que el ÚLTIMO ítem de `menu.items` es el CTA
+ * (convención común de navbar) y se estiliza distinto del resto. Si el
+ * backend agrega un campo explícito (`is_cta`/`style`), reemplazar esta
+ * heurística.
+ *
+ * Menú mobile (2026-08-31, implementado — reemplaza la nota anterior de
+ * "fuera de alcance"): por debajo de `3md` (960px, mismo breakpoint usado
+ * en `Hero.astro` para el corte mobile/tablet-chica de `position_container`
+ * — consistencia entre componentes) la fila de contenido cambia de `flex
+ * justify-between` a un grid de 3 columnas (`grid-cols-[auto_1fr_auto]`):
+ * botón hamburguesa (`ph:list`) a la izquierda, logo centrado de verdad en
+ * la columna `1fr` (no solo centrado dentro de su propio slot, como en
+ * desktop), CTA colapsado a un círculo ícono-solo (`ph:paper-plane-tilt`,
+ * sin label — el `<span>` del texto se oculta con `hidden 3md:inline`) a
+ * la derecha. El menú de links desktop (`<nav>`) se sigue ocultando con
+ * `hidden 3md:flex` (antes `md:flex`, mismo breakpoint que todo lo demás).
+ *
+ * Logo en mobile — simplificado a propósito: el crossfade dorado→blanco +
+ * panel `cicaindigo-500` detrás del logo en sticky (ver más abajo, "Panel
+ * de fondo del logo") es una técnica pensada para el ancho de contenido de
+ * 1200px del sitio — no tiene sentido (y el logo blanco quedaría invisible
+ * sobre el fondo blanco sólido de sticky SIN ese panel) en un viewport
+ * angosto. En mobile se fuerza SIEMPRE el logo dorado (`3md:` en las
+ * clases de opacidad de ambos `<img>` y en el trigger del panel), sin
+ * crossfade ni cambio de ancho — más simple y sin riesgo de logo invisible.
+ *
+ * Overlay fullscreen (`data-mobile-menu`, disparado por
+ * `data-mobile-menu-toggle`): fondo `cicaindigo-700` sólido, logo blanco
+ * superpuesto arriba + botón cerrar (`ph:x`) a la derecha, nav vertical
+ * centrada reusando el mismo esquema hover/active que el menú desktop
+ * (`hover:bg-cicaindigo-400`/`active:bg-cicaindigo-700`, ambos ya legibles
+ * sobre indigo-700), CTA completo (label + ícono) centrado abajo del todo.
+ *
+ * Apertura "metal líquido imantado" (2026-08-31, 3ra vuelta — reemplaza el
+ * `scale-95/opacity-0` original, pedido explícito del Tech Lead: "que se
+ * expanda... como si fuera metal líquido pegándose a un imán en el
+ * contorno"): en vez de escalar desde una esquina fija, el overlay se
+ * REVELA con un `clip-path: circle()` sólido (fondo `cicaindigo-700` sin
+ * transparencia, sin filtros) que crece desde el centro real de la
+ * hamburguesa — coordenadas leídas en el momento del click vía
+ * `getBoundingClientRect()` y escritas como custom properties
+ * `--menu-origin-x/y` (ver `initMobileMenu`), así el origen es exacto sin
+ * importar en qué estado glassy/sticky esté la topbar cuando se abre —
+ * hasta `farthest-corner` (cubre el viewport completo sin importar aspect
+ * ratio; más robusto que calcular un % fijo tipo 150%, que en pantallas
+ * muy anchas y bajas se quedaría corto).
+ *
+ * 2da vuelta descartada (probada y sacada, feedback visual directo del
+ * Tech Lead: "un blur no conviene, alrededor queda transparente, es mejor
+ * sólido"): un filtro SVG "goo" (blur + feColorMatrix) sobre el panel
+ * completo — el blur en sí introduce semitransparencia en el borde
+ * mientras corre la transición, exactamente lo que se pidió evitar. No se
+ * reemplaza por ninguna otra técnica de distorsión de forma: el panel es
+ * un círculo sólido sin filtros, sin excepción.
+ *
+ * El carácter "líquido" queda en la ENTRADA DEL CONTENIDO, no en la forma
+ * de la máscara (que además es matemáticamente ciega a cualquier overshoot
+ * — un radio que se "pasa" del tamaño que ya cubre toda la pantalla y
+ * vuelve no se nota, no hay nada más que cubrir). Los 3 bloques directos
+ * del overlay (fila logo/cerrar, nav, CTA) arrancan con
+ * `opacity-0 translate-y-5` y "snapean" a su posición final con el mismo
+ * `magneticEase` (cubic-bezier con overshoot) que ya usa el resto del
+ * archivo, con delay escalonado por bloque (`:nth-child`) — el efecto de
+ * cascada + el propio overshoot del bezier es lo que se lee como "líquido
+ * pegándose a un imán", sin necesitar ningún filtro ni transparencia.
+ *
+ * Submenús (`item.children`, `MenuItem.children` en `types.ts`): un solo
+ * nivel de profundidad (los hijos de los hijos, si el backend algún día
+ * los manda, no se renderizan — el contrato actual de `Menu`/`MenuItem`
+ * no distingue explícitamente "cuántos niveles soporta el UI", así que se
+ * limita a lo que el diseño pidió: "arrow down/up como indicador").
+ * Colapsado por default vía la técnica `grid-template-rows: 0fr → 1fr`
+ * (más robusta que un `max-height` arbitrario — anima a la altura real del
+ * contenido sin necesidad de medirla por JS ni arriesgar que un submenú
+ * más alto que el cap quede cortado).
+ *
+ * "Vidrio" del estado glassy — mejora progresiva, sin librerías nuevas:
+ * 1) Base CSS (siempre activa, cero JS): borde con lados diferenciados
+ *    (blanco más brillante arriba/izquierda, más tenue abajo/derecha —
+ *    simula la luz agarrando el canto superior del vidrio) + sombra
+ *    grande y suave + un glow interno sutil. Técnica estándar de
+ *    glassmorphism, la misma idea que el ejemplo `.glass` del Tech Lead.
+ * 2) Distorsión de refracción real (SVG `feDisplacementMap`) — mejora
+ *    progresiva vía `<script>` más abajo, portada de
+ *    `sources/ejemplo-glass` (técnica pública de "liquid glass" con SVG,
+ *    sin React ni WebGL). Se evaluó también `@specy/liquid-glass-react`
+ *    y se descartó: usa Three.js + captura de screenshot del DOM, exige
+ *    React, y su propio README avisa "initialization is expensive" — va
+ *    en contra de "JS mínimo" (ADR-001) sin necesidad real. Solo la
+ *    soportan navegadores Chromium (`CSS.supports` lo detecta) — en el
+ *    resto, el blur/tint/borde de arriba ya funciona sólido como base.
+ *
+ * JS vanilla (scroll listener + % de progreso + distorsión), sin isla de
+ * framework — ver ADR-001 "JS mínimo", mismo patrón de Hero.astro.
+ */
+import type { Menu } from '../lib/types';
+import { Icon } from 'astro-icon/components';
+
+interface Props {
+  menu: Menu | null;
+}
+
+const { menu } = Astro.props;
+const currentPath = Astro.url.pathname;
+const isHome = currentPath === '/';
+
+const navItems = menu?.items ?? [];
+// El link "Home" no se muestra aparte en el menú — el logo ya enlaza a "/"
+// (patrón estándar de navbar), así que sería un link duplicado. El manual
+// del API (`docs/context/api/stamless-api-v1.md`, respuesta de ejemplo de
+// `GET /menus/{slug}`) NO documenta un campo `is_home` en `MenuItem` — ese
+// campo solo existe en `PageSummary`/`Page`. Se filtra por `href === '/'`,
+// que es lo único confirmado por el contrato (y lo mismo que ya usa
+// `isActive` más abajo). Si el backend agrega `is_home` real al item de
+// menú, cambiar este filtro por esa propiedad explícita.
+const allLinkItems = navItems.length > 1 ? navItems.slice(0, -1) : navItems;
+const linkItems = allLinkItems.filter((item) => item.href !== '/');
+const ctaItem = navItems.length > 1 ? navItems[navItems.length - 1] : null;
+
+// Alturas como `h-*` fijas (36px / 48px / 40px) en vez de `py-*` — así el
+// alto coincide exacto con lo medido en Figma sin depender del
+// line-height real de Lato en cada tamaño de fuente. `uppercase` — spec
+// del Design System, el menú principal va en mayúsculas.
+// Transición "líquido imantado": ease-out con leve overshoot (se pasa un
+// poco y vuelve), da la sensación de que el panel de vidrio "se pega" al
+// borde superior en vez de simplemente cambiar de forma.
+const magneticEase = '[transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)]';
+
+// Delay de la "forma" — CONSCIENTE DE LA DIRECCIÓN (2026-08-30, 2da
+// vuelta): la primera versión usaba un `delay-200` fijo en ambos
+// sentidos, pero eso solo se ve bien yendo glassy→sticky (el borde se
+// va rápido, la forma lo sigue 200ms después). En sentido inverso
+// (sticky→glassy, al volver arriba) el `data-glass-bar` de abajo hace
+// que el borde reaparezca DESPUÉS de la forma (ver su <style>) — así
+// que estos otros elementos (wrapper, panel del logo, logo, CTA)
+// también deben moverse SIN delay en reversa, no seguir esperando
+// 200ms, o el borde terminaba reapareciendo mientras el panel
+// cicaindigo-500 todavía se veía. `group-data-[scrolled=true]/nav:`
+// aplica el delay SOLO cuando el destino es sticky; sin esa variante
+// activa (destino glassy) no hay ninguna clase de delay, así que cae al
+// default del navegador (`transition-delay: 0s`) — inmediato.
+const shapeDelay = 'group-data-[scrolled=true]/nav:delay-200';
+
+const linkBaseClass =
+  'inline-flex h-9 items-center justify-center rounded-[30px] px-5 text-base font-light uppercase transition-colors duration-200 hover:rounded-full hover:bg-cicaindigo-400 hover:font-normal hover:text-white';
+// CTA de la topbar (2026-08-31, responsive): en mobile (<3md) colapsa a un
+// círculo ícono-solo (`w-10`, sin `px-*` — el label queda oculto vía
+// `hidden 3md:inline` en el <span> del texto, ver más abajo); desde `3md`
+// recupera el ancho "hug" + padding originales (204px medidos en Figma).
+const ctaBaseClass = `inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full text-xl font-normal italic transition-all ${shapeDelay} duration-300 3md:h-12 3md:w-auto 3md:px-6 group-data-[scrolled=true]/nav:h-10`;
+
+// Botón ícono-solo compartido por la hamburguesa (topbar) y el botón
+// cerrar (overlay) — mismo círculo `h-10 w-10`, mismos colores que la
+// variante "dark" del CTA (bg-white/10, hover a blanco 20%). El botón
+// cerrar del overlay no necesita el swap sticky/light (el overlay siempre
+// tiene fondo cicaindigo-500 sólido), así que esta clase queda simple sin
+// las variantes `group-data-[scrolled=true]/nav:*`; la hamburguesa SÍ las
+// necesita (vive en la topbar, que sí alterna glassy/sticky) y las agrega
+// aparte en su propio `class`.
+const mobileIconBtnClass =
+  'inline-flex h-10 w-10 items-center justify-center rounded-full cursor-pointer bg-white/10 text-white transition-colors duration-200 hover:bg-white/20';
+---
+
+<header
+  data-site-header
+  data-home={isHome ? 'true' : 'false'}
+  data-approaching={isHome ? 'false' : 'true'}
+  data-scrolled={isHome ? 'false' : 'true'}
+  class="group/nav fixed inset-x-0 top-0 z-99"
+>
+  {
+    /*
+    Wrapper de ancho: separa "qué tan ancha es la FORMA flotante" (este
+    div — máximo 1280px EXACTOS medidos en Figma, centrado, sin padding
+    horizontal para no restarle ancho al cap) de "qué tan ancho es el
+    CONTENIDO" (fila interna más abajo — 1200px, la convención de todo el
+    sitio). En sticky el wrapper se vuelve fullwidth de verdad (sin cap) —
+    el navbar pasa a ocupar el 100% del viewport, solo el contenido queda
+    a 1200px.
+
+    `pt-*` = offset vertical de "flotar", separado del borde superior del
+    viewport (no cuenta para el ancho). 3 pasos en vez de 2 (2026-08-30,
+    ajustado a pedido del Tech Lead — números finales, 2da vuelta): el
+    salto directo `pt-7` (reposo, pixel-perfect del diseño) → `pt-0`
+    (sticky) se sentía duro/brusco, y además la conversión pasaba muy
+    rápido sobre el fondo del Hero. Ahora:
+      - 0–150px: `pt-7` (reposo, sin cambios — se estira más que antes a
+        propósito, para que el navbar-glass se luzca más tiempo sobre
+        los fondos del slider).
+      - 150px (`data-approaching`): baja a `pt-4` — la pill sigue 100%
+        glassy (rounded/blur/borde/color sin tocar), solo se acerca al
+        borde superior.
+      - 200px (`data-scrolled`, el umbral total para llegar a `pt-0` —
+        antes 150px): arranca recién ahí la conversión grande a
+        fullwidth (rounded-none/bg-white/border-0/panel/ancho), y el
+        margen termina su recorrido de `pt-4` a `pt-0` como parte de esa
+        misma animación (pasa visualmente por ~`pt-2` a mitad de
+        camino, sin necesidad de una clase aparte para eso).
+  */
+  }
+  <div
+    class={`mx-auto max-w-[1280px] pt-7 transition-all ${shapeDelay} duration-500 ${magneticEase} group-data-[scrolled=true]/nav:max-w-none group-data-[approaching=true]/nav:pt-4 group-data-[scrolled=true]/nav:pt-0 px-7 group-data-[scrolled=true]/nav:px-0`}
+  >
+    <div
+      data-glass-bar
+      class="bg-cicaindigo-900/20 3md:h-[60px] relative h-[52px] overflow-hidden rounded-full border border-white/20 border-r-white/10 border-b-white/10 px-1.5 shadow-[0_25px_45px_rgba(0,0,0,0.25),inset_0_0_20px_rgba(255,255,255,0.12)] backdrop-blur-[20px] backdrop-saturate-150 group-data-[scrolled=true]/nav:rounded-none group-data-[scrolled=true]/nav:border-0 group-data-[scrolled=true]/nav:bg-white/95 group-data-[scrolled=true]/nav:px-2 group-data-[scrolled=true]/nav:shadow-[0_6px_18px_-4px_rgba(45,44,77,0.18),0_1px_4px_rgba(45,44,77,0.10)] group-data-[scrolled=true]/nav:backdrop-blur-none group-data-[scrolled=true]/nav:backdrop-saturate-100"
+    >
+      {
+        /*
+      El cap de 1200px es la convención de CONTENIDO fullwidth del sitio
+      (bloque de ancho = viewport, contenido centrado a 1200) — aplica al
+      estado sticky, donde la barra sí es fullwidth de verdad. En glassy
+      la barra YA está limitada a 1280px fijos (medida de Figma); volver a
+      aplicar el cap de 1200 ahí deja solo ~40px de aire total (menos aún
+      lo que se come la curva de las esquinas rounded-full), y el
+      logo/CTA terminan pegados al borde. En glassy el contenido llena el
+      ancho real de la pill con su propio padding, sin cap adicional.
+    */
+      }
+      {
+        /*
+      Panel de fondo del logo en sticky (2026-08-30, pedido del Tech
+      Lead): NO es un chip pegado al tamaño del logo — es un bloque que
+      sangra desde el borde real del viewport hasta 200px DENTRO del
+      contenido de 1200px (el mismo ancho reservado que ya usa el logo
+      en glassy). Fórmula: container = 1200px; espacio sobrante de un
+      lado = (100% − 1200px) / 2; ancho del panel = espacio sobrante +
+      200px. "100%" acá es el ancho de `data-glass-bar`, que en sticky
+      ES el viewport completo (wrapper exterior sin cap) — coincide
+      exacto con la geometría pedida. Vive DETRÁS de la fila de
+      contenido (antes en el DOM, sin z-index propio → pinta debajo).
+      Invisible en glassy (`opacity-0` + `w-0`).
+
+      `max(200px, ...)` (2026-08-31, fix — reportado por el Tech Lead con
+      captura): la fórmula original sin clamp se encoge por debajo de
+      200px en viewports entre 960px (`3md`, donde arranca este panel) y
+      1200px — ahí `(100% − 1200px)` ya es NEGATIVO (100% < 1200px), así
+      que el resultado real cae por debajo del piso de 200px pedido en
+      vez de mantenerlo. `max()` fuerza el piso: por debajo de 1200px de
+      viewport el panel queda fijo en 200px; por encima, el cálculo
+      original (que ahí sí da más de 200px) sigue creciendo con el
+      espacio sobrante como estaba pensado.
+    */
+      }
+      <div
+        aria-hidden="true"
+        class={`absolute inset-y-0 left-0 w-0 bg-cicaindigo-500 opacity-0 transition-all ${shapeDelay} duration-500 ${magneticEase} 3md:group-data-[scrolled=true]/nav:w-[max(200px,calc((100%-1200px)/2+200px))] 3md:group-data-[scrolled=true]/nav:opacity-100`}
+      >
+      </div>
+
+      {
+        /*
+      Fila de contenido — grid de 3 columnas por debajo de `3md` (960px,
+      hamburguesa / logo centrado / CTA ícono), `flex justify-between`
+      desde `3md` en adelante (layout desktop original, sin cambios). El
+      `px-4` base es un padding propio nuevo para mobile — antes la fila
+      no tenía ninguno en glassy (`px-0`), quedaba pegada al padding
+      mínimo (`px-1.5`, 6px) de la pill; ahora en mobile el hamburger/CTA
+      necesitan más aire. `sm:group-data-[scrolled=true]/nav:px-6` pasó a
+      `3md:...` (antes activaba entre 540–960px, justo el rango que ahora
+      es "mobile" con el grid nuevo — se corrige el corte para que no se
+      pisen los dos sistemas).
+      */
+      }
+      <div
+        class="3md:flex 3md:justify-between 3md:px-0 3md:group-data-[scrolled=true]/nav:max-w-[1200px] 3md:group-data-[scrolled=true]/nav:px-6 mx-auto grid h-full grid-cols-[auto_1fr_auto] items-center gap-4 px-0 lg:px-0 lg:group-data-[scrolled=true]/nav:px-8"
+      >
+        {/* Hamburguesa (2026-08-31) — solo <3md, dispara el overlay fullscreen de más abajo. */}
+        <button
+          type="button"
+          data-mobile-menu-toggle
+          aria-haspopup="true"
+          aria-expanded="false"
+          aria-controls="mobile-menu-overlay"
+          aria-label="Abrir menú"
+          class={`3md:hidden ${mobileIconBtnClass} group-data-[scrolled=true]/nav:bg-cicaindigo-100 cursor-pointer group-data-[scrolled=true]/nav:text-cicaindigo-500 group-data-[scrolled=true]/nav:hover:bg-cicaindigo-700 group-data-[scrolled=true]/nav:hover:text-white`}
+        >
+          <Icon name="ph:list" class="size-5" />
+        </button>
+
+        {
+          /* Logo — 107×36 (glassy, sin fondo propio) → 118×40 (sticky, el fondo lo da el panel de arriba, no un chip individual). En mobile (<3md) siempre dorado, centrado de verdad en la columna `1fr` — ver nota "Logo en mobile" en la cabecera del archivo. */
+        }
+        <a
+          href="/"
+          aria-label="CICA360 — Inicio"
+          class={`relative flex h-7 3md:h-9 w-auto shrink-0 items-center justify-center cursor-pointer justify-self-center overflow-hidden transition-all ${shapeDelay} duration-500 ${magneticEase} 3md:w-[200px] 3md:justify-start 3md:px-5 group-data-[scrolled=true]/nav:justify-center 3md:group-data-[scrolled=true]/nav:h-10 3md:group-data-[scrolled=true]/nav:w-[118px]`}
+        >
+          <img
+            src="/logos/logo-main-gold.svg"
+            alt="CICA360"
+            class="3md:group-data-[scrolled=true]/nav:opacity-0 3md:h-9 relative h-7 w-auto transition-opacity duration-300"
+          />
+          <img
+            src="/logos/logo-main-white.svg"
+            alt="CICA360"
+            class="3md:group-data-[scrolled=true]/nav:opacity-100 3md:h-8 absolute h-6 w-auto opacity-0 transition-opacity duration-300"
+          />
+        </a>
+
+        {
+          linkItems.length > 0 && (
+            <nav aria-label="Menú principal" class="3md:flex hidden items-center">
+              <ul class="flex items-center gap-1">
+                {linkItems.map((item) => {
+                  const isActive = item.href === currentPath;
+                  return (
+                    <li>
+                      <a
+                        href={item.href ?? '#'}
+                        target={item.target}
+                        aria-current={isActive ? 'page' : undefined}
+                        class={`${linkBaseClass} ${
+                          isActive
+                            ? 'bg-cicaindigo-700 rounded-full font-normal text-white'
+                            : 'group-data-[scrolled=true]/nav:text-cicaindigo-500 text-white/90'
+                        }`}
+                      >
+                        {item.title}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          )
+        }
+
+        {
+          ctaItem?.href && (
+            <a
+              href={ctaItem.href}
+              target={ctaItem.target}
+              rel={ctaItem.target === '_blank' ? 'noopener noreferrer' : undefined}
+              class={`${ctaBaseClass} hover:bg-cicagold-500 hover:text-cicaindigo-500 group-data-[scrolled=true]/nav:bg-cicaindigo-100 group-data-[scrolled=true]/nav:text-cicaindigo-500 group-data-[scrolled=true]/nav:hover:bg-cicagold-600 bg-white/10 text-white group-data-[scrolled=true]/nav:hover:text-white`}
+            >
+              {/* Label oculto <3md (queda solo el ícono) — ver `ctaBaseClass`. */}
+              <span class="3md:inline hidden">{ctaItem.title}</span>
+              <Icon name="ph:paper-plane-tilt" size={16} />
+            </a>
+          )
+        }
+      </div>
+    </div>
+  </div>
+
+  {
+    /*
+    Overlay fullscreen del menú mobile (2026-08-31, <3md/960px). Ver nota
+    completa en la cabecera del archivo ("Apertura 'metal líquido
+    imantado'"). Cerrado por default: `clip-path: circle(0px at
+    var(--menu-origin-x) var(--menu-origin-y))` — el origen (custom
+    properties) lo escribe `initMobileMenu` en cada apertura/cierre desde
+    la posición real de la hamburguesa; el fallback fijo (40px 40px) en el
+    `<style>` de abajo solo cubre el caso límite de JS deshabilitado, ya
+    que `data-open` (lo que realmente dispara la expansión) tampoco se
+    activaría sin JS. `pointer-events`/`clip-path` quedan en el `<style>`
+    scoped más abajo (no como utilities de Tailwind) porque el origen del
+    círculo es dinámico y no se puede expresar como clase estática. Panel
+    100% sólido a propósito — sin `opacity` de por medio y sin ningún
+    filtro (ver nota de la cabecera, feedback directo del Tech Lead contra
+    el blur/goo probado antes). `3md:hidden` — nunca se muestra en
+    desktop, aunque quedara abierto de una visita mobile previa (no
+    debería pasar, pero es una red de seguridad barata).
+  */
+  }
+  <div
+    id="mobile-menu-overlay"
+    data-mobile-menu
+    data-open="false"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Menú de navegación"
+    class="bg-cicaindigo-700 fixed inset-0 z-200 flex flex-col overflow-y-auto 3md:hidden"
+  >
+    {
+      /*
+      Logo superpuesto arriba + botón cerrar — el fondo YA es
+      cicaindigo-700 sólido (2026-08-31, antes cicaindigo-500 — probado a
+      pedido del Tech Lead), así que el logo blanco (mismo que el chip
+      sticky) se lee bien sin necesitar ningún panel detrás.
+
+      Logo centrado DE VERDAD (2026-08-31): antes era `justify-between`
+      con el logo como primer hijo — quedaba pegado a la izquierda, no
+      centrado, porque el botón cerrar (40×40) del otro extremo no tiene
+      un contrapeso del lado del logo. Se agrega un `div` vacío de
+      40×40px (mismo tamaño que el botón cerrar, `mobileIconBtnClass`
+      incluye `h-10 w-10` = 40px) como espaciador simétrico a la
+      izquierda — con eso el logo, en el medio, queda realmente centrado
+      en el ancho total de la fila.
+    */
+    }
+    <div data-menu-reveal="1" class="flex items-center justify-between px-6 pt-6 pb-2">
+      <div class="h-10 w-10" aria-hidden="true"></div>
+      <a
+        href="/"
+        aria-label="CICA360 — Inicio"
+        class={`relative flex h-9 w-auto shrink-0 items-center justify-center cursor-pointer justify-self-center overflow-hidden transition-all ${shapeDelay} duration-500 ${magneticEase} 3md:w-[200px] 3md:justify-start 3md:px-5 group-data-[scrolled=true]/nav:justify-center 3md:group-data-[scrolled=true]/nav:h-10 3md:group-data-[scrolled=true]/nav:w-[118px]`}
+      >
+        <img src="/logos/logo-main-white.svg" alt="CICA360" class="h-8 w-auto" />
+      </a>
+      <button type="button" data-mobile-menu-close aria-label="Cerrar menú" class={mobileIconBtnClass}>
+        <Icon name="ph:x" class="size-5" />
+      </button>
+    </div>
+
+    {
+      /* Nav vertical centrada — misma jerarquía que el menú desktop (`linkItems`, ya excluye Home/CTA), mismo esquema hover/active (`linkBaseClass` reusado, agrandado para touch). */
+    }
+    <nav data-menu-reveal="2" aria-label="Menú principal (mobile)" class="flex flex-1 flex-col items-center justify-center px-6 py-8">
+      <ul class="flex w-full max-w-sm flex-col items-center gap-1 text-center">
+        {
+          linkItems.map((item) => {
+            const isActive = item.href === currentPath;
+            const hasChildren = item.children && item.children.length > 0;
+            // Mismo esquema que el link activo del menú desktop (`rounded-full`
+            // incluido — es parte del estilo "activo", no solo el color).
+            const activeClass = isActive ? 'bg-cicaindigo-700 rounded-full font-normal text-white' : 'text-white/90';
+
+            return hasChildren ? (
+              <li class="w-full">
+                {/*
+                Submenú — colapsado por default vía `grid-template-rows:
+                0fr` (wrapper) + `overflow-hidden` (hijo directo): anima a
+                la altura real del contenido sin medirla por JS. El botón
+                (no un <a>, no navega) togglea `grid-rows-[0fr]`↔
+                `grid-rows-[1fr]` y rota el ícono — ver `initMobileMenu`.
+              */}
+                <button
+                  type="button"
+                  data-mobile-submenu-toggle
+                  aria-expanded="false"
+                  class={`${linkBaseClass} h-12 w-full justify-between px-6 text-lg ${activeClass}`}
+                >
+                  {item.title}
+                  <Icon name="ph:caret-down" data-mobile-submenu-icon class="size-4 shrink-0 transition-transform duration-300" />
+                </button>
+                <div data-mobile-submenu class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-out">
+                  <ul class="flex flex-col items-center gap-1 overflow-hidden pt-1">
+                    {item.children.map((child) => (
+                      <li class="w-full">
+                        <a
+                          href={child.href ?? '#'}
+                          target={child.target}
+                          aria-current={child.href === currentPath ? 'page' : undefined}
+                          class={`${linkBaseClass} h-10 w-full text-base ${child.href === currentPath ? 'bg-cicaindigo-700 rounded-full font-normal text-white' : 'text-white/80'}`}
+                        >
+                          {child.title}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </li>
+            ) : (
+              <li class="w-full">
+                <a
+                  href={item.href ?? '#'}
+                  target={item.target}
+                  aria-current={isActive ? 'page' : undefined}
+                  class={`${linkBaseClass} h-12 w-full text-lg ${activeClass}`}
+                >
+                  {item.title}
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
+    </nav>
+
+    {
+      /* CTA completo (label + ícono), centrado abajo del todo — mismo variant "dark" que el CTA de la topbar glassy (`bg-white/10`/hover `cicagold-500`), pero fijo (el overlay no tiene estado sticky/glassy propio) y más grande (h-14) para que sea el punto de llegada obvio del menú. */
+    }
+    {
+      ctaItem?.href && (
+        <div data-menu-reveal="3" class="flex justify-center px-6 pb-10">
+          <a
+            href={ctaItem.href}
+            target={ctaItem.target}
+            rel={ctaItem.target === '_blank' ? 'noopener noreferrer' : undefined}
+            class="hover:bg-cicagold-500 hover:text-cicaindigo-500 inline-flex h-14 shrink-0 items-center justify-center gap-2 rounded-full bg-white/10 px-8 text-xl font-normal text-white italic transition-colors duration-200"
+          >
+            {ctaItem.title}
+            <Icon name="ph:paper-plane-tilt" size={20} />
+          </a>
+        </div>
+      )
+    }
+  </div>
+
+  {
+    /*
+    Barra de progreso de scroll — sacada del navbar (pegada al borde
+    inferior de la pill hacía "ruido" visual, se leía como una línea
+    suelta encima del contenido). Ahora es un elemento propio, fijo al
+    borde inferior real del VIEWPORT (no del navbar), full-width,
+    independiente del estado glassy/sticky — patrón estándar de
+    "reading progress bar". En scrollY=0 el `scaleX(0)` la deja con
+    ancho cero (invisible en la práctica), así que no hace falta
+    ocultarla con opacity.
+  */
+  }
+  <div data-scroll-progress class="bg-cicagold-500 fixed inset-x-0 bottom-0 z-150 h-[3px] origin-left" style="transform: scaleX(0)"></div>
+</header>
+
+<style>
+  /*
+    Transición en dos velocidades de `data-glass-bar`, CONSCIENTE DE LA
+    DIRECCIÓN (2026-08-30, 2da vuelta — la 1ra versión tenía un único
+    `transition` fijo, que solo se veía bien yendo glassy→sticky).
+
+    Un elemento no puede tener dos duraciones/delays distintos con
+    utilities sueltas de Tailwind, así que va como CSS explícito. La
+    clave es que CSS resuelve la transición con el `transition` VIGENTE
+    EN EL ESTADO DE LLEGADA — por eso alcanza con dos reglas separadas,
+    una por atributo `data-scrolled` de destino, sin JS extra:
+
+    - Yendo a sticky (`data-scrolled="true"`, scroll hacia abajo): el
+      borde se va PRIMERO (rápido, sin delay) — si no, quedaba visible
+      "a medio borrar" mientras la barra ya se expandía a fullwidth.
+    - Yendo a glassy (`data-scrolled="false"`, scroll hacia arriba): es
+      la secuencia CONTRARIA — la forma tiene que empezar a rearmarse
+      primero (sin delay) y el borde reaparece AL FINAL (delay), o se
+      veía el borde encima de una barra que todavía tenía el panel
+      cicaindigo-500/fondo blanco de sticky sin terminar de irse (bug
+      reportado por el Tech Lead).
+  */
+  [data-site-header][data-scrolled='true'] [data-glass-bar] {
+    transition:
+      border-color 150ms ease-out,
+      border-width 150ms ease-out,
+      border-radius 400ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms,
+      background-color 400ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms,
+      padding 400ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms,
+      box-shadow 400ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms,
+      backdrop-filter 400ms cubic-bezier(0.34, 1.56, 0.64, 1) 200ms;
+  }
+
+  [data-site-header][data-scrolled='false'] [data-glass-bar] {
+    transition:
+      border-radius 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      background-color 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      padding 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      box-shadow 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      backdrop-filter 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      border-color 150ms ease-out 200ms,
+      border-width 150ms ease-out 200ms;
+  }
+
+  /*
+    Overlay mobile — expansión "metal líquido imantado" (2026-08-31, 3ra
+    vuelta — sin filtros, panel 100% sólido). Ver nota completa en la
+    cabecera del archivo. `circle(0px at ...)` en vez de `circle(0% at
+    ...)`: con radio en px el punto de partida es un punto real sin
+    importar el tamaño del elemento (el overlay es `inset-0`, o sea ya
+    mide 100vw×100vh incluso cerrado). `farthest-corner` en vez de un %
+    fijo (150%, etc.): es la palabra clave nativa de CSS para "el círculo
+    más chico que cubre todo el elemento desde este centro", exacta para
+    cualquier aspect ratio de viewport sin tener que calcularla a mano.
+
+    Curva propia (sin `magneticEase`): un overshoot en el RADIO de un
+    clip-path de revelado no se nota — pasado `farthest-corner` ya no
+    queda nada más por cubrir, así que "pasarse y volver" es invisible acá
+    (el overshoot SÍ se usa, y sí se nota, en el contenido interno más
+    abajo). `cubic-bezier(0.16, 1, 0.3, 1)` ("expo-out") da una salida
+    rápida y un asentamiento suave, la parte "elegante y moderna" pedida.
+  */
+  [data-mobile-menu] {
+    clip-path: circle(0px at var(--menu-origin-x, 40px) var(--menu-origin-y, 40px));
+    pointer-events: none;
+    transition: clip-path 650ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  [data-mobile-menu][data-open='true'] {
+    clip-path: circle(farthest-corner at var(--menu-origin-x, 40px) var(--menu-origin-y, 40px));
+    pointer-events: auto;
+  }
+
+  /*
+    Contenido interno — acá SÍ vive el overshoot (mismos valores que
+    `magneticEase`, expresados en CSS puro porque este bloque no tiene
+    acceso al template string del frontmatter). Cada bloque (`data-menu-
+    reveal="1|2|3"`: fila logo/cerrar, nav, CTA) arranca desplazado y
+    transparente, y "snapea" a su lugar con delay creciente — la cascada +
+    el propio overshoot de la curva es la parte "líquida pegándose a un
+    imán" del efecto, sin blur ni transparencia en el panel de fondo.
+    Cierra sin stagger (delay 0, ver regla base) — al cerrar no hace falta
+    la cascada, el clip-path ya se encarga de ocultar todo rápido.
+  */
+  [data-mobile-menu] [data-menu-reveal] {
+    opacity: 0;
+    transform: translateY(20px);
+    transition:
+      opacity 400ms cubic-bezier(0.34, 1.56, 0.64, 1),
+      transform 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  [data-mobile-menu][data-open='true'] [data-menu-reveal] {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  [data-mobile-menu][data-open='true'] [data-menu-reveal='1'] {
+    transition-delay: 120ms;
+  }
+
+  [data-mobile-menu][data-open='true'] [data-menu-reveal='2'] {
+    transition-delay: 200ms;
+  }
+
+  [data-mobile-menu][data-open='true'] [data-menu-reveal='3'] {
+    transition-delay: 280ms;
+  }
+</style>
+
+<script>
+  // --- "Liquid glass" — mapa de desplazamiento SVG (sin React, sin WebGL) ---
+  // Portado de sources/ejemplo-glass/src/GlassElement/*.ts. Genera, como
+  // data-URI, un <svg> con un degradé que codifica la curvatura del borde
+  // redondeado (R/G = ejes X/Y) y lo usa como `feDisplacementMap` para que
+  // el `backdrop-filter` refracte lo que hay detrás en vez de solo
+  // desenfocarlo. Ver comentario de cabecera del componente.
+  interface DisplacementBox {
+    width: number;
+    height: number;
+    radius: number;
+    depth: number;
+  }
+
+  function getDisplacementMap({ width, height, radius, depth }: DisplacementBox): string {
+    const svg = `<svg height="${height}" width="${width}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <style>.mix { mix-blend-mode: screen; }</style>
+      <defs>
+        <linearGradient id="Y" x1="0" x2="0" y1="${Math.ceil((radius / height) * 15)}%" y2="${Math.floor(100 - (radius / height) * 15)}%">
+          <stop offset="0%" stop-color="#0F0" />
+          <stop offset="100%" stop-color="#000" />
+        </linearGradient>
+        <linearGradient id="X" x1="${Math.ceil((radius / width) * 15)}%" x2="${Math.floor(100 - (radius / width) * 15)}%" y1="0" y2="0">
+          <stop offset="0%" stop-color="#F00" />
+          <stop offset="100%" stop-color="#000" />
+        </linearGradient>
+      </defs>
+      <rect x="0" y="0" height="${height}" width="${width}" fill="#808080" />
+      <g filter="blur(2px)">
+        <rect x="0" y="0" height="${height}" width="${width}" fill="#000080" />
+        <rect x="0" y="0" height="${height}" width="${width}" fill="url(#Y)" class="mix" />
+        <rect x="0" y="0" height="${height}" width="${width}" fill="url(#X)" class="mix" />
+        <rect x="${depth}" y="${depth}" height="${height - 2 * depth}" width="${width - 2 * depth}" fill="#808080" rx="${radius}" ry="${radius}" filter="blur(${depth}px)" />
+      </g>
+    </svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+  }
+
+  function getDisplacementFilter({ width, height, radius, depth }: DisplacementBox, strength = 60): string {
+    const svg = `<svg height="${height}" width="${width}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="displace" color-interpolation-filters="sRGB">
+          <feImage x="0" y="0" height="${height}" width="${width}" href="${getDisplacementMap({ width, height, radius, depth })}" result="displacementMap" />
+          <feDisplacementMap in="SourceGraphic" in2="displacementMap" scale="${strength}" xChannelSelector="R" yChannelSelector="G" />
+        </filter>
+      </defs>
+    </svg>`;
+    return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg) + '#displace';
+  }
+
+  function initGlassDistortion(header: HTMLElement) {
+    const bar = header.querySelector('[data-glass-bar]');
+    if (!(bar instanceof HTMLElement)) return;
+
+    // La distorsión vía feImage/feDisplacementMap dentro de backdrop-filter
+    // solo la soportan navegadores Chromium de forma confiable — en el
+    // resto (Safari/Firefox) esto no corre y el blur/tint/borde CSS de la
+    // clase de Tailwind sigue siendo la base, así que nunca se rompe nada.
+    if (!CSS.supports('backdrop-filter', 'url(#x)')) return;
+
+    let resizeTimer: number | undefined;
+
+    function applyDistortion() {
+      // Solo tiene sentido en el estado glassy — en sticky el fondo ya es
+      // blanco sólido y el spec pide "Glass: off".
+      if (header.dataset.scrolled === 'true') {
+        bar.style.backdropFilter = '';
+        return;
+      }
+      const rect = bar.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      const filter = getDisplacementFilter({
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        radius: Math.round(rect.height / 2),
+        depth: 10,
+      });
+      bar.style.backdropFilter = `blur(20px) url('${filter}') saturate(1.5)`;
+    }
+
+    applyDistortion();
+    window.addEventListener('resize', () => {
+      window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(applyDistortion, 150);
+    });
+
+    // El listener de scroll de initSiteHeader ya actualiza data-scrolled;
+    // acá solo reaccionamos a ese cambio para prender/apagar la distorsión.
+    const observer = new MutationObserver(applyDistortion);
+    observer.observe(header, { attributes: true, attributeFilter: ['data-scrolled'] });
+  }
+
+  // --- Menú mobile fullscreen (2026-08-31, 3ra vuelta — apertura "metal
+  // líquido imantado", panel sólido sin filtros) ---
+  // JS vanilla, sin isla de framework — mismo criterio que el resto del
+  // archivo (ADR-001 "JS mínimo"). Abre/cierra el overlay togglando
+  // `data-open` (el `<style>` scoped hace el resto vía clip-path + la
+  // entrada escalonada de `[data-menu-reveal]`), calcula el origen del
+  // círculo desde la posición REAL de la hamburguesa en cada
+  // apertura/cierre (no una sola vez al cargar — la topbar puede estar
+  // glassy o sticky, con la hamburguesa en distinta posición vertical),
+  // maneja los submenús (`grid-template-rows: 0fr ↔ 1fr` + rotación del
+  // ícono), cierra con Escape, bloquea el scroll del body mientras está
+  // abierto, y cierra solo al hacer click en un link REAL (no en un toggle
+  // de submenú, que es un <button>, no un <a> —
+  // `overlay.querySelectorAll('a[href]')` ya los excluye naturalmente).
+  function initMobileMenu(header: HTMLElement) {
+    const toggleBtn = header.querySelector('[data-mobile-menu-toggle]');
+    const overlay = header.querySelector('[data-mobile-menu]');
+    const closeBtn = overlay?.querySelector('[data-mobile-menu-close]');
+
+    if (!(toggleBtn instanceof HTMLElement) || !(overlay instanceof HTMLElement)) return;
+
+    function isOpen(): boolean {
+      return toggleBtn.getAttribute('aria-expanded') === 'true';
+    }
+
+    // Centro real del botón hamburguesa en coordenadas de viewport — mismo
+    // sistema de referencia que `position: fixed` (el overlay), así que no
+    // hace falta restar scroll ni offsets de ningún contenedor padre.
+    function setOriginFromToggle() {
+      const rect = toggleBtn.getBoundingClientRect();
+      overlay.style.setProperty('--menu-origin-x', `${rect.left + rect.width / 2}px`);
+      overlay.style.setProperty('--menu-origin-y', `${rect.top + rect.height / 2}px`);
+    }
+
+    function openMenu() {
+      setOriginFromToggle();
+      overlay.dataset.open = 'true';
+      toggleBtn.setAttribute('aria-expanded', 'true');
+      // Bloqueo de scroll del body mientras el overlay está abierto —
+      // patrón estándar para menús fullscreen, evita que el usuario
+      // scrollee "detrás" del menú en iOS/Android.
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeMenu() {
+      setOriginFromToggle();
+      overlay.dataset.open = 'false';
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      document.body.style.overflow = '';
+    }
+
+    toggleBtn.addEventListener('click', () => (isOpen() ? closeMenu() : openMenu()));
+    closeBtn?.addEventListener('click', closeMenu);
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && isOpen()) closeMenu();
+    });
+
+    // Submenús: un botón por item con hijos (`data-mobile-submenu-toggle`,
+    // hermano directo de su `[data-mobile-submenu]`) — togglea las clases
+    // de `grid-template-rows` (0fr colapsado / 1fr expandido, anima a la
+    // altura real sin medirla) y rota el ícono `ph:caret-down` 180°.
+    overlay.querySelectorAll('[data-mobile-submenu-toggle]').forEach((btn) => {
+      if (!(btn instanceof HTMLElement)) return;
+
+      btn.addEventListener('click', () => {
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+
+        const submenu = btn.nextElementSibling;
+        const icon = btn.querySelector('[data-mobile-submenu-icon]');
+
+        if (submenu instanceof HTMLElement) {
+          submenu.classList.toggle('grid-rows-[1fr]', !expanded);
+          submenu.classList.toggle('grid-rows-[0fr]', expanded);
+        }
+        icon?.classList.toggle('rotate-180', !expanded);
+      });
+    });
+
+    // Cierra el overlay al navegar — cualquier <a href> real dentro (link
+    // de primer nivel, link de submenú, o el CTA de abajo). Los toggles de
+    // submenú son <button>, no <a>, así que quedan afuera naturalmente.
+    overlay.querySelectorAll('a[href]').forEach((link) => {
+      link.addEventListener('click', closeMenu);
+    });
+  }
+
+  function initSiteHeader() {
+    const header = document.querySelector('[data-site-header]');
+    if (!(header instanceof HTMLElement) || header.dataset.headerInitialized === 'true') return;
+    header.dataset.headerInitialized = 'true';
+
+    const progressBar = header.querySelector('[data-scroll-progress]');
+    // Solo Home tiene fase glassy — 200px de scroll antes de pasar a
+    // sticky, para que se alcance a apreciar el detalle del vidrio/
+    // refracción antes de la transición (pedido explícito del Tech Lead).
+    // En páginas interiores `data-scrolled`/`data-approaching` ya nacen
+    // en "true" (ver frontmatter) y este listener simplemente lo
+    // mantiene así.
+    //
+    // `APPROACH_THRESHOLD`/`SCROLL_THRESHOLD` (2026-08-30, números
+    // finales — 2da vuelta): paso intermedio ANTES del umbral grande de
+    // conversión a sticky — a los 150px el margen superior baja de
+    // `pt-7` a `pt-4` (ver wrapper exterior) mientras la pill sigue 100%
+    // glassy; recién a los 200px arranca la conversión grande a
+    // fullwidth (antes 150px — se estiró para que el navbar-glass se
+    // luzca más tiempo sobre los fondos del slider).
+    const isHome = header.dataset.home === 'true';
+    const APPROACH_THRESHOLD = 150;
+    const SCROLL_THRESHOLD = 200;
+
+    function update() {
+      const approaching = isHome ? window.scrollY > APPROACH_THRESHOLD : true;
+      const scrolled = isHome ? window.scrollY > SCROLL_THRESHOLD : true;
+      header.dataset.approaching = approaching ? 'true' : 'false';
+      header.dataset.scrolled = scrolled ? 'true' : 'false';
+
+      if (progressBar instanceof HTMLElement) {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const ratio = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
+        progressBar.style.transform = `scaleX(${ratio})`;
+      }
+    }
+
+    update();
+    // El listener de scroll corre siempre (no solo en Home): la barra de
+    // progreso ahora es un indicador de lectura de toda la página, no
+    // algo atado a la transición glassy→sticky del navbar (que sigue
+    // siendo home-only vía el `isHome` de más arriba).
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    initGlassDistortion(header);
+    initMobileMenu(header);
+  }
+
+  initSiteHeader();
+  document.addEventListener('astro:page-load', initSiteHeader);
+</script>

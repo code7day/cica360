@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import BlockRenderer from '../components/blocks/BlockRenderer.astro';
+import { getPages, getPage } from '../lib/api';
+
+// La home se resuelve por `is_home = true` (no por slug fijo "home") para
+// no asumir cuál page está marcada como home en Filament — es exactamente
+// el mismo criterio que usa el backend (ver ADR-016 en el repo de
+// Stamless). Si en el futuro cambia cuál page es la home, este código no
+// necesita tocarse.
+const { data: pages } = await getPages({ is_home: true, per_page: 1 });
+const homeSummary = pages[0];
+
+if (!homeSummary) {
+  throw new Error(
+    '[pages/index.astro] Ninguna página está marcada como is_home=true en el backend. ' +
+      'Marcar una page como home en Console antes de buildear, o ajustar este fallback.',
+  );
+}
+
+const page = await getPage(homeSummary.slug);
+---
+
+<BaseLayout title={page.title} description={page.meta?.seo_description}>
+  {page.blocks.map((block) => <BlockRenderer block={block} />)}
+</BaseLayout>

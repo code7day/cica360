@@ -1,0 +1,476 @@
+---
+/**
+ * Texto Enriquecido (`rich_text`) — reesquematizado 2026-08-31 a pedido
+ * directo del Tech Lead (mockup compartido en el chat: título/subtítulo
+ * centrados, cuerpo de texto, botón "Conoce más" con ícono "+", flechas de
+ * scroll arriba/abajo de la sección), cruzando puntualmente el límite
+ * Claude=datos/Antigravity=visual descrito en CLAUDE.md — mismo criterio ya
+ * usado en Hero.astro y Header.astro. Antes este bloque solo tenía
+ * fondo/color de texto/padding/ancho; ahora expone TODO el sistema de
+ * personalización visual ya usado en Hero/Slide (decoradores arriba/abajo
+ * con color+opacidad, flecha de scroll, alineación, ancho de contenido) más
+ * un único link "ver más" opcional. Ver ADR correspondiente en
+ * genesis/docs/context/DECISIONS.md para el detalle del lado backend
+ * (`PropertiesSchema`, `LinkSchema::makeSingle()`).
+ *
+ * Tipado LOCAL (no en `types.ts`): a diferencia de `SlideProperties`
+ * (compartido de verdad por Slider/Slide, que es su propio recurso), las
+ * `properties`/`content` de un `Block` son "forma libre según `type`" por
+ * diseño (ver el comentario de `Block` en `types.ts`) — cada bloque tipa
+ * localmente lo que necesita, mismo patrón que ya usa Hero.astro.
+ *
+ * `show_link` (booleano) es un gate EXPLÍCITO, separado de si `links[0]`
+ * tiene datos cargados o no — permite ocultar el botón sin perder lo ya
+ * configurado en Studio (pedido explícito: "si queremos mostrar o no el
+ * link a ver más").
+ */
+import type { Block, ContentLink, DecoratorShape } from '../../lib/types';
+import { Icon } from 'astro-icon/components';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+const content = block.content as { body?: string; html?: string };
+const html = content.body ?? content.html ?? '';
+
+interface RichTextProperties {
+  background_color?: string | null;
+  text_color?: string | null;
+  text_align?: 'left' | 'center' | 'right';
+  content_width?: 'full' | 'boxed' | 'narrow';
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  show_scroll_indicator?: boolean;
+  show_link?: boolean;
+  link_radius?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  link_size?: 'sm' | 'md' | 'lg';
+  decorator_top?: DecoratorShape;
+  decorator_top_color?: string | null;
+  decorator_top_opacity?: number;
+  decorator_bottom?: DecoratorShape;
+  decorator_bottom_color?: string | null;
+  decorator_bottom_opacity?: number;
+}
+
+const properties = (block.properties as RichTextProperties) ?? {};
+const link: ContentLink | undefined = block.links?.[0];
+const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean(link?.label);
+
+/**
+ * Mismo set de shapes SVG que `decorator_bottom` en Hero.astro (misma
+ * geometría, mismos paths, no reinventados) — acá se usan para AMBOS
+ * bordes (arriba y abajo) de la sección, ya que `rich_text` soporta los
+ * dos, a diferencia del slide del Hero que solo tenía inferior.
+ */
+const DECORATOR_PATHS: Record<Exclude<DecoratorShape, 'none'>, string> = {
+  wave: 'M0,38 C 160,50 250,56 324,56 C 420,56 550,45 720,35 C 850,28 950,18 1044,18 C 1150,18 1300,30 1440,48 L1440,64 L0,64 Z',
+  zigzag: 'M0,64 L0,42 L120,22 L240,42 L360,22 L480,42 L600,22 L720,42 L840,22 L960,42 L1080,22 L1200,42 L1320,22 L1440,42 L1440,64 Z',
+  curve: 'M0,64 L0,30 C 360,-6 1080,66 1440,30 L1440,64 Z',
+  diagonal: 'M0,64 L0,56 L1440,10 L1440,64 Z',
+  triangle: 'M0,64 L0,42 L660,42 L720,10 L780,42 L1440,42 L1440,64 Z',
+};
+
+/**
+ * `content_width` (2026-08-31, estándar de 2 niveles definido por el Tech
+ * Lead "para alinearnos" — reemplaza el cap único anterior de 1200px):
+ * CONTENEDOR (ancho máximo del "cajón" de la sección + padding horizontal
+ * responsive) y, adentro, CONTENIDO (ancho máximo del texto en sí,
+ * centrado dentro del contenedor). Nota: esto es una escala PROPIA de
+ * `content_width` — distinta a propósito del cap sitewide de 1200px que
+ * usan Header/Hero para su fila de navegación/CTA (ver comentario de
+ * cabecera en Header.astro); ese convenio sigue intacto, este es el
+ * sistema específico de la property `content_width` de `rich_text` (y
+ * cualquier bloque futuro que la reuse).
+ *
+ *   - `boxed`: contenedor 1280px, contenido 1100px (spec exacta del Tech
+ *     Lead).
+ *   - `full`: contenedor fullwidth con 80px de padding horizontal (spec
+ *     exacta del Tech Lead — responsive: base más chica en mobile,
+ *     exactos 80px desde `3md`/960px, mismo criterio ya usado en
+ *     Hero.astro para paddings fijos "por ahora"), contenido fullwidth
+ *     (llena el contenedor, sin cap propio).
+ *   - `narrow`: SIN spec explícita ("lo dejo a tu recomendación para que
+ *     sea usado por las diferentes páginas web existentes en el mundo") —
+ *     se reusa el MISMO contenedor de 1280px que `boxed` (mismo
+ *     ritmo/grid en las 3 variantes, solo cambia qué tan angosta es la
+ *     columna de texto adentro) y el contenido angosta a 720px: ancho de
+ *     columna de lectura estándar en la web (la convención tipográfica
+ *     recomienda 45–75 caracteres por línea; 720px cae en esa franja para
+ *     los tamaños de fuente de este sitio — un punto medio redondo entre
+ *     `max-w-2xl`/672px y `max-w-3xl`/768px de Tailwind, ninguno de los
+ *     dos "oficial" pero ambos de referencia).
+ */
+const CONTAINER_WIDTH_CLASSES: Record<NonNullable<RichTextProperties['content_width']>, string> = {
+  boxed: 'max-w-[1280px] px-4 sm:px-6 lg:px-8',
+  narrow: 'max-w-[1280px] px-4 sm:px-6 lg:px-8',
+  full: 'max-w-none px-6 3md:px-[80px]',
+};
+
+/**
+ * `boxed` responsive en 2 pasos (2026-08-31, agregado a pedido del Tech
+ * Lead — breakpoints custom de este proyecto, definidos en
+ * `src/styles/global.css` bajo `@theme` como `--breakpoint-*`, NO en
+ * `tailwind.config.js`: Tailwind v4 configura `screens`/`container` con
+ * CSS nativo en vez del objeto JS `theme.extend.screens` de v3): por
+ * debajo de `3xl` (1536px) — cubre el rango que el Tech Lead marcó entre
+ * `3lg` (1200px) y `2xl` (1440px), y todo lo que quede por debajo de eso
+ * también — el contenido cierra en 960px; desde `3xl` en adelante (pantallas
+ * grandes de verdad) se abre a los 1100px originales. Mobile-first: el
+ * valor base (`max-w-[960px]`) aplica siempre salvo que `3xl:` lo pise.
+ */
+const INNER_CONTENT_WIDTH_CLASSES: Record<NonNullable<RichTextProperties['content_width']>, string> = {
+  boxed: 'max-w-[960px] 3xl:max-w-[1100px]',
+  narrow: 'max-w-[720px]',
+  full: 'max-w-full',
+};
+
+const PADDING_Y_CLASSES: Record<NonNullable<RichTextProperties['padding_y']>, string> = {
+  sm: 'py-8 3md:py-10',
+  md: 'py-0 3md:py-0',
+  lg: 'py-7 3md:py-10',
+  xl: 'py-20 3md:py-32',
+};
+
+const TEXT_ALIGN_CLASSES: Record<NonNullable<RichTextProperties['text_align']>, string> = {
+  left: 'text-left items-start',
+  center: 'text-center items-center',
+  right: 'text-right items-end',
+};
+
+/**
+ * Estilo del botón "ver más" según `links[0].type` (primary/secondary/
+ * outline/text, mismas 4 opciones de `LinkSchema` en genesis). El mockup
+ * de referencia del Tech Lead usa el estilo `outline` (fondo transparente,
+ * borde e ícono "+") para distinguirlo del CTA sólido/dorado del Hero —
+ * mismo `ContentLink.type` ya pensado para esto, ningún componente lo
+ * consumía todavía.
+ */
+const LINK_STYLE_CLASSES: Record<string, string> = {
+  primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
+  outline: 'border-cicaindigo-500 bg-transparent text-cicaindigo-500 hover:bg-cicaindigo-500 hover:text-white',
+  text: 'border-transparent bg-transparent text-cicaindigo-500 underline-offset-4 hover:underline',
+};
+
+/**
+ * `link_radius` (2026-08-31, reemplaza el `rounded-full` fijo que traía el
+ * botón — feedback visual del Tech Lead: el mockup real usa esquinas
+ * redondeadas moderadas, no un pill completo). Valores 1:1 con la escala
+ * real de `border-radius` de Tailwind v4 (`rounded-xs` 2px … `rounded-xl`
+ * 12px, más `rounded-full`) — sin tabla de conversión de este lado.
+ */
+const LINK_RADIUS_CLASSES: Record<NonNullable<RichTextProperties['link_radius']>, string> = {
+  xs: 'rounded-xs',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  full: 'rounded-full',
+};
+
+/**
+ * `link_size` (2026-08-31, agregado junto con `link_radius` — antes el
+ * botón tenía un solo tamaño fijo, "grande"). El ícono "+" escala con el
+ * texto (no queda un tamaño fijo de 16px para las 3 variantes).
+ */
+const LINK_SIZE_CLASSES: Record<NonNullable<RichTextProperties['link_size']>, { button: string; icon: number }> = {
+  sm: { button: 'h-9 gap-1.5 px-4 text-xs', icon: 14 },
+  md: { button: 'h-10 gap-2 px-5 text-xs', icon: 16 },
+  lg: { button: 'h-11 gap-2 px-6 text-sm', icon: 18 },
+};
+
+/**
+ * Achique responsive en el rango `md`→`3md` (768-960px, 2026-08-31,
+ * mismo pedido que motivó el ajuste equivalente en Split.astro): en ese
+ * rango el contenido angosto (`narrow`/`boxed`) todavía no tiene el aire
+ * de `3md`/960px en adelante — título/subtítulo/cuerpo/botón se ven
+ * sobredimensionados para el ancho real disponible. Mismo patrón:
+ * tamaño elegido en mobile → se achica en `md` → vuelve al tamaño
+ * elegido en `3md`. Para el botón, `linkSize.button` puede ser
+ * sm/md/lg según `properties.link_size` — en vez de un valor fijo,
+ * reinstalamos EXACTAMENTE ese tamaño con el prefijo `3md:` (no siempre
+ * "lg"), así el achique de `md:` respeta lo que el editor eligió en
+ * Studio en vez de pisarlo con un tamaño distinto al llegar a `3md`.
+ */
+// Corrección (mismo día, mismo pedido que en Split.astro): el revert a
+// partir de `3md` volvía al MISMO tamaño que `sm:` (desktop), se veía muy
+// grande. Se bajó un escalón: `3md` ya no repite el tamaño original,
+// asienta en uno intermedio.
+const TITLE_RESPONSIVE_CLASS = 'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl';
+// Subtítulo: desde `md` en adelante queda en `text-base` ("medio"), ya no
+// vuelve a `text-lg` en `3md` (antes sí).
+const SUBTITLE_RESPONSIVE_CLASS = 'w-full text-lg font-light text-gray-500 md:text-base';
+// NOTA: `@tailwindcss/typography` no está instalado en este proyecto (sin
+// `prose-sm`/`prose-base` reales, `prose` es un no-op acá — confirmado:
+// no está en `package.json` ni hay `@plugin`/`.prose` custom en
+// `global.css`). En vez de depender de esas clases (no harían nada), el
+// achique usa `text-*` explícito directo sobre el wrapper — como los
+// hijos (`<p>`/`<ul>`/`<li>` del HTML de `content.body`) no fijan su
+// propio tamaño, heredan el del wrapper.
+// Corrección 2 (mismo día, mismo pedido que en Split.astro): vuelve a
+// bold (700) nomás, no "Lato Black". El contraste real lo da un gris más
+// oscuro que el cuerpo (`gray-800` vs `gray-600`), no solo el peso.
+const BODY_RESPONSIVE_CLASS = 'prose w-full max-w-none font-normal text-base text-gray-600 md:text-sm 3md:text-base';
+const SMALL_BUTTON_CLASS = 'md:h-9 md:gap-1.5 md:px-4 md:text-xs';
+
+// Viñetas "DOT grande" (2026-08-31, mismo pedido/simplificación que en
+// Split.astro): `list-style` nativo reemplazado por un punto más grande,
+// `currentColor` — sin properties nuevas, sin JS. Ver `<style>` al final
+// del archivo (`:global()`, `content.body`/`html` es HTML inyectado vía
+// `set:html`, fuera del scoping automático de Astro).
+
+const containerWidthClass = CONTAINER_WIDTH_CLASSES[properties.content_width ?? 'boxed'];
+const innerContentWidthClass = INNER_CONTENT_WIDTH_CLASSES[properties.content_width ?? 'boxed'];
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'md'];
+const textAlignClass = TEXT_ALIGN_CLASSES[properties.text_align ?? 'left'];
+const linkStyleClass = LINK_STYLE_CLASSES[link?.type ?? 'primary'] ?? LINK_STYLE_CLASSES.primary;
+const linkRadiusClass = LINK_RADIUS_CLASSES[properties.link_radius ?? 'lg'];
+const linkSize = LINK_SIZE_CLASSES[properties.link_size ?? 'lg'];
+// Reinstala el tamaño de botón REALMENTE elegido (`linkSize.button`, no un
+// valor fijo) desde `3md` en adelante — ver comentario de
+// `SMALL_BUTTON_CLASS` más arriba.
+const linkSizeRestoreClass = linkSize.button
+  .split(' ')
+  .map((cls) => `3md:${cls}`)
+  .join(' ');
+
+const sectionStyle = [
+  properties.background_color ? `background-color: ${properties.background_color};` : '',
+  properties.text_color ? `color: ${properties.text_color};` : '',
+]
+  .join(' ')
+  .trim();
+
+/** `100` = color sólido; por debajo, gradiente transparente→color (nunca alfa plano sobre sólido). */
+function decoratorFill(color: string | null | undefined, opacity: number | undefined, gradientId: string): string {
+  return (opacity ?? 100) < 100 ? `url(#${gradientId})` : (color ?? '#ffffff');
+}
+---
+
+<section class="relative w-full" style={sectionStyle || undefined}>
+  {
+    properties.decorator_top && properties.decorator_top !== 'none' && (
+      <svg class="absolute top-0 left-0 z-10 h-16 w-full -scale-y-100" viewBox="0 0 1440 64" preserveAspectRatio="none" aria-hidden="true">
+        {(properties.decorator_top_opacity ?? 100) < 100 && (
+          <defs>
+            <linearGradient id={`richtext-top-${block.uuid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color={properties.decorator_top_color ?? '#ffffff'} stop-opacity="0" />
+              <stop
+                offset="100%"
+                stop-color={properties.decorator_top_color ?? '#ffffff'}
+                stop-opacity={(properties.decorator_top_opacity ?? 100) / 100}
+              />
+            </linearGradient>
+          </defs>
+        )}
+        <path
+          d={DECORATOR_PATHS[properties.decorator_top]}
+          fill={decoratorFill(properties.decorator_top_color, properties.decorator_top_opacity, `richtext-top-${block.uuid}`)}
+        />
+      </svg>
+    )
+  }
+
+  {
+    /*
+    2 niveles (2026-08-31, estándar del Tech Lead — ver comentario de
+    `CONTAINER_WIDTH_CLASSES` más arriba): el div CONTENEDOR lleva el
+    padding horizontal + `padding_y` + el cap de `boxed`/`narrow` (o el
+    padding fijo de `full`); el div de CONTENIDO adentro lleva el cap
+    angosto propio (`boxed`/`narrow`) o `max-w-full` (`full`) + la
+    alineación de texto/flex.
+
+    `w-full` explícito en cada elemento de TEXTO (fix de pixel-fidelity —
+    el div de contenido es `flex flex-col` + `items-*` para que el BOTÓN
+    se achique a su contenido y quede centrado/alineado por flex; sin
+    `w-full` los elementos de texto (h2/p/prose) HEREDAN ese mismo
+    comportamiento de "encogerse al contenido" como cualquier flex item
+    bajo `align-items` distinto de `stretch` — con texto largo esto puede
+    angostar el bloque en vez de ocupar el ancho completo, leyéndose como
+    si el contenido se hubiera corrido a la izquierda en vez de quedar
+    perfectamente centrado. `w-full` fuerza a que el texto SIEMPRE ocupe
+    el ancho completo del div de contenido y la alineación quede 100% a
+    cargo de `text-*` (textAlignClass), no de flex. El `<a>` de abajo NO
+    lleva `w-full` a propósito: un botón debe achicarse a su label +
+    ícono, no estirarse.
+  */
+  }
+  <div class={`mx-auto ${containerWidthClass} ${paddingYClass}`}>
+    {
+      /*
+      `gap-6` (24px, 2026-08-31) como base entre los 4 ítems del stack —
+      cluster pretitle+título+subtítulo, cuerpo, botón "ver más" y flecha
+      de scroll. El Tech Lead confirmó que cluster→cuerpo con este valor
+      "está bien", pero cuerpo→botón y botón→flecha se seguían viendo más
+      chicos con el MISMO gap numérico — razón: el texto tiene line-height
+      (espacio "de sobra" arriba/abajo de cada línea que ya suma aire
+      visual), mientras que el botón (borde ajustado) y el ícono de la
+      flecha (SVG sin slack) no tienen ese colchón, así que el mismo `gap`
+      en px se percibe más apretado junto a ellos. Fix: el `<a>` del botón
+      y el `<div>` de la flecha suman un `mt-3` (12px) EXTRA por encima del
+      `gap-6` del padre (se acumulan) — cuerpo→botón y botón→flecha quedan
+      en 36px reales, cluster→cuerpo se mantiene en los 24px que ya
+      estaban bien.
+    */
+    }
+    <div class={`mx-auto flex flex-col gap-6 ${innerContentWidthClass} ${textAlignClass}`}>
+      {
+        /*
+        Cluster pretitle+título+subtítulo (2026-08-31): `gap-1` interno,
+        bien ajustado — son un solo mensaje en 3 niveles de énfasis, no 3
+        bloques independientes. `w-full` acá también (mismo motivo que en
+        cada hijo: el padre es flex `items-*` no-stretch, sin `w-full` este
+        grupo se encogería a su contenido en vez de ocupar el ancho del
+        stack).
+      */
+      }
+      <div class={`flex w-full flex-col gap-1 ${textAlignClass}`}>
+        {
+          /*
+          Lato Light (font-weight 300, 2026-08-31): el Design System define
+          el subtítulo como "Lato Light" (mismo criterio ya documentado en
+          Hero.astro: "Body Large — Lato Light / 20px") — acá faltaba el
+          peso explícito, heredaba el default. El Tech Lead pidió
+          considerar el mismo tratamiento para el pretitulo (antes
+          `font-semibold`) cuando el bloque lo tenga — queda `font-light`
+          en los dos, uppercase + tracking + color se mantienen sin cambio
+          en el pretitulo.
+        */
+        }
+        {block.pretitle && <p class="text-cicagold-600 w-full text-sm font-light tracking-[0.2em] uppercase">{block.pretitle}</p>}
+        {
+          /*
+          `<h2>`, no `<h1>` (2026-08-31, aclarado a pedido del Tech Lead —
+          cuidado semántico): el `<h1>` de la página lo aporta el bloque
+          que va PRIMERO en `blocks[]` — `Hero` en Home (ver Hero.astro),
+          `Heading` en páginas internas (banner con imagen de fondo tipo
+          "Sobre CICA"/"Servicios", ver capturas del Tech Lead — bloque
+          `heading` TODAVÍA ES STUB, pendiente de implementar). `rich_text`
+          nunca es ese primer bloque en la práctica — siempre es un
+          heading de SECCIÓN (`<h2>`).
+          Estilo normal, NO itálica (2026-08-31, fix con captura): el
+          itálico 900 (Lato Black Italic) es EXCLUSIVO del `<h1>` del Hero
+          de Home — es un tratamiento de display grande, no el estándar
+          del sitio. El Tech Lead confirmó con capturas que el `<h1>` de
+          `Heading` (páginas internas) TAMPOCO es itálico — mismo criterio
+          que este `<h2>`: `font-bold` derecho. Cuando se implemente
+          `Heading.astro`, su `<h1>` debe usar el mismo tratamiento (bold,
+          sin `italic`), no copiar el de Hero.astro.
+        */
+        }
+        {block.title && <h2 class={`text-cicaindigo-500 w-full ${TITLE_RESPONSIVE_CLASS}`}>{block.title}</h2>}
+        {block.subtitle && <p class={SUBTITLE_RESPONSIVE_CLASS}>{block.subtitle}</p>}
+      </div>
+      {html && <div class={`richtext-body ${BODY_RESPONSIVE_CLASS}`} set:html={html} />}
+
+      {
+        showLink && link && (
+          <a
+            href={link.href ?? '#'}
+            target={link.target}
+            rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+            class={`mt-3 inline-flex items-center justify-center border font-bold tracking-[0.1em] uppercase transition ${linkSize.button} ${SMALL_BUTTON_CLASS} ${linkSizeRestoreClass} ${linkRadiusClass} ${linkStyleClass}`}
+          >
+            {link.label}
+            <Icon name="ph:plus" size={linkSize.icon} aria-hidden="true" />
+          </a>
+        )
+      }
+
+      {
+        /*
+        `show_scroll_indicator` (2026-08-31, reubicado el mismo día): antes
+        vivía FUERA del div padded, como hermano después de que cerraba —
+        eso hacía que la separación con el botón fuera el `padding_y`
+        completo de la sección (hasta 96px en `lg`), mucho más de lo que el
+        Tech Lead quería ("no debe de haber mucha separación del botón con
+        el indicador"). Ahora es un ítem más del mismo stack, con `gap-6` +
+        `mt-3` propio (mismo criterio que el botón — ver comentario del
+        `gap-6` más arriba: sin el `mt-3` extra se veía más apretado junto
+        al botón que el resto del stack) — el `padding_y` de la sección
+        sigue aplicando UNA vez, debajo de la flecha, como aire final
+        antes del borde/decorador.
+      */
+      }
+      {
+        properties.show_scroll_indicator && (
+          <div class="mt-3 flex w-full justify-center" aria-hidden="true">
+            {/* `cicagold-500`: mismo color que ya usan las flechas prev/next del
+                Hero para este tipo de indicador, no un tono nuevo sin relación
+                con el resto. */}
+            <Icon name="ph:caret-down" class="text-cicagold-500 size-6 animate-bounce" />
+          </div>
+        )
+      }
+    </div>
+  </div>
+
+  {
+    properties.decorator_bottom && properties.decorator_bottom !== 'none' && (
+      <svg class="absolute bottom-0 left-0 z-10 h-16 w-full" viewBox="0 0 1440 64" preserveAspectRatio="none" aria-hidden="true">
+        {(properties.decorator_bottom_opacity ?? 100) < 100 && (
+          <defs>
+            <linearGradient id={`richtext-bottom-${block.uuid}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color={properties.decorator_bottom_color ?? '#ffffff'} stop-opacity="0" />
+              <stop
+                offset="100%"
+                stop-color={properties.decorator_bottom_color ?? '#ffffff'}
+                stop-opacity={(properties.decorator_bottom_opacity ?? 100) / 100}
+              />
+            </linearGradient>
+          </defs>
+        )}
+        <path
+          d={DECORATOR_PATHS[properties.decorator_bottom]}
+          fill={decoratorFill(properties.decorator_bottom_color, properties.decorator_bottom_opacity, `richtext-bottom-${block.uuid}`)}
+        />
+      </svg>
+    )
+  }
+</section>
+
+<style>
+  /* Espaciado entre párrafos (2026-08-31, mismo pedido/nota que en
+     Split.astro: `@tailwindcss/typography` no está instalado, sin el
+     plugin los `<p>` no tienen espaciado propio). `:last-child` en 0 para
+     no sumar aire de más antes del cierre del bloque. */
+  .richtext-body :global(p) {
+    margin-bottom: 0.75em;
+  }
+  .richtext-body :global(p:last-child) {
+    margin-bottom: 0;
+  }
+  .richtext-body :global(strong),
+  .richtext-body :global(b) {
+    font-weight: 700;
+    color: var(--color-gray-800);
+  }
+
+  /* Viñetas "DOT grande" — ver comentario de `BODY_RESPONSIVE_CLASS` en el
+     frontmatter. `:global()` porque `html` es contenido inyectado vía
+     `set:html`, fuera del alcance del scoping automático de Astro. */
+  .richtext-body :global(ul) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    list-style: none;
+    margin-block: 0.5em;
+    padding-left: 0;
+  }
+  .richtext-body :global(li) {
+    position: relative;
+    padding-left: 1.5em;
+  }
+  .richtext-body :global(li)::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.5em;
+    width: 0.6em;
+    height: 0.6em;
+    border-radius: 9999px;
+    background-color: currentColor;
+  }
+</style>

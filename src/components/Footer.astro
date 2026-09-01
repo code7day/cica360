@@ -1,0 +1,35 @@
+---
+/**
+ * Footer — scaffold funcional (sin diseño visual final, ver TASK.md Fase 2).
+ * Mismo contrato que Header.astro: recibe el menú ya resuelto, sin fetch propio.
+ */
+import type { Menu } from '../lib/types';
+
+interface Props {
+  menu: Menu | null;
+}
+
+const { menu } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="mt-auto border-t border-gray-200">
+  <div class="mx-auto max-w-6xl px-4 py-8 text-sm text-gray-600">
+    {
+      menu && (
+        <nav aria-label="Enlaces del pie" class="mb-4">
+          <ul class="flex flex-wrap gap-4">
+            {menu.items.map((item) => (
+              <li>
+                <a href={item.href ?? '#'} target={item.target} class="hover:underline">
+                  {item.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )
+    }
+    <p>&copy; {year} CICA360. Todos los derechos reservados.</p>
+  </div>
+</footer>

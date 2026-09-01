@@ -1,0 +1,41 @@
+---
+/** Stub funcional — presentacional puro, sin JS. */
+import type { Block } from '../../lib/types';
+
+interface ServiceItem {
+  title?: string;
+  subtitle?: string;
+  image?: { url: string | null; alt_text: string | null } | null;
+  page_slug?: string | null;
+  href?: string | null;
+  url?: string | null;
+  badge?: string | null;
+}
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as { items?: ServiceItem[] };
+const items = content.items ?? [];
+---
+
+<section class="mx-auto max-w-6xl px-4 py-16">
+  {block.title && <h2 class="mb-8 text-center text-3xl font-bold">{block.title}</h2>}
+  <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      items.map((item) => {
+        const href = item.href ?? item.url ?? '#';
+        return (
+          <a href={href} class="block rounded border border-gray-200 p-6 hover:shadow">
+            {item.image?.url && <img src={item.image.url} alt={item.image.alt_text ?? ''} class="mb-4 h-10 w-10" loading="lazy" />}
+            {item.badge && <span class="mb-2 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs">{item.badge}</span>}
+            {item.title && <h3 class="text-lg font-semibold">{item.title}</h3>}
+            {item.subtitle && <p class="mt-1 text-sm text-gray-600">{item.subtitle}</p>}
+          </a>
+        );
+      })
+    }
+  </div>
+</section>

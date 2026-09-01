@@ -1,0 +1,24 @@
+---
+/** Stub funcional — presentacional puro, sin JS. */
+import type { Block } from '../../lib/types';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as {
+  image_desktop?: { url: string | null; alt_text: string | null } | null;
+};
+---
+
+<section class="relative px-4 py-20 text-center">
+  {
+    content.image_desktop?.url && (
+      <img src={content.image_desktop.url} alt={content.image_desktop.alt_text ?? ''} class="absolute inset-0 -z-10 h-full w-full object-cover" loading="lazy" />
+    )
+  }
+  {block.pretitle && <p class="text-sm uppercase tracking-wide">{block.pretitle}</p>}
+  {block.title && <h1 class="text-4xl font-bold">{block.title}</h1>}
+  {block.subtitle && <p class="mt-2 text-lg">{block.subtitle}</p>}
+</section>

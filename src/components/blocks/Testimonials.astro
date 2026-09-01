@@ -1,0 +1,465 @@
+---
+/**
+ * Testimonios / Casos de Éxito (`testimonials`) — implementación real
+ * 2026-08-31, reemplaza el stub anterior. Mockup de referencia del Tech
+ * Lead: sección de fondo sólido (teal en Cliente 0), grid de 3 tarjetas con
+ * avatar circular, frase en itálica, nombre+puesto en itálica debajo, y un
+ * único botón "Ver más" con ícono de ojo debajo de la grilla.
+ *
+ * **Actualización 2026-08-31 (misma tarde, corrección "expectativa vs
+ * realidad" contra el mockup real del Tech Lead):**
+ * - Avatares más grandes (antes `h-16 w-16` = 64px, ahora 96–112px).
+ * - Cada testimonio pasa a vivir dentro de su propia tarjeta con fondo
+ *   propio (`properties.item_background_color`, nuevo — ver
+ *   `App\Filament\Schemas\PropertiesSchema` en genesis), no solo flotando
+ *   sobre el fondo de la sección.
+ * - La cita ya NO se envuelve en comillas por código — texto tal cual.
+ * - Firma en una sola línea `— Nombre[, Rol]` (antes 2 líneas separadas,
+ *   nombre arriba / rol abajo).
+ * - Espaciados más generosos (gaps y padding de tarjeta), acorde al mockup.
+ * - El subtítulo (`block.subtitle`) ya se renderizaba en código — el gap
+ *   real era que el seeder (`Cliente0ContentSeeder`) no lo estaba
+ *   sembrando en el bloque de la home; corregido del lado de genesis.
+ * - **Carousel** (nuevo): si hay MÁS testimonios que los que caben en una
+ *   fila (más de 3, el máximo de columnas en desktop — ver `MAX_GRID_ITEMS`
+ *   abajo), la grilla estática se reemplaza por un carousel con scroll-snap
+ *   horizontal nativo (swipe táctil de fábrica del navegador, sin JS extra
+ *   para eso) + auto-avance por JS (mismo patrón vainilla ya usado en
+ *   `Hero.astro`: pausa en hover/foco/touch, respeta
+ *   `prefers-reduced-motion`) + puntos de navegación. Con 3 o menos
+ *   testimonios se mantiene la grilla estática simple, sin JS.
+ *
+ * Dato clave del contrato de API (ver `ResolvesPublicLinks::transformBlockContent`
+ * en genesis, rama `testimonials`): este bloque YA NO trae un filtro crudo
+ * (`content.limit`/`content.order`) hasta acá — el backend lo resuelve en
+ * runtime contra la tabla real `testimonials` (`is_visible = true`,
+ * gestionada desde su propio recurso Filament) y entrega directamente
+ * `content.items[]` ya recortado/ordenado (respeta el `limit`/`order`
+ * propio de CADA bloque, confirmado en `ResolvesPublicLinks`), en la MISMA
+ * forma que ya esperaba este componente (`name`/`role`/`quote`/`avatar`).
+ *
+ * `show_link`/`links[0]` (2026-08-31): mismo patrón "gate explícito" que
+ * `rich_text` — un solo botón opcional ("Ver más casos de éxito"), nunca
+ * un Repeater de enlaces. Ya apunta a la página interna real
+ * (`Cliente0ContentSeeder::upsertHomePage()` linkea a `pages['casos-de-exito']`).
+ */
+import type { Block, ContentLink, Media } from '../../lib/types';
+import { Icon } from 'astro-icon/components';
+
+interface TestimonialItem {
+  name?: string;
+  role?: string | null;
+  quote?: string;
+  avatar?: Media | null;
+}
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+const content = block.content as { items?: TestimonialItem[] };
+const items = content.items ?? [];
+
+interface TestimonialsProperties {
+  background_color?: string | null;
+  /** 2026-08-31, nuevo: fondo de CADA tarjeta, independiente del fondo de la sección. */
+  item_background_color?: string | null;
+  /** 2026-08-31, nuevo: % de opacidad del fondo de cada tarjeta en reposo (0–100). El hover sube +20 automáticamente, sin campo propio. */
+  item_background_opacity?: number | null;
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /**
+   * Tipada pero sin consumir todavía (2026-08-31) — mismo gap ya
+   * documentado en `Split.astro`/`RichText.astro`: no hay sistema de
+   * animaciones on-scroll implementado en el sitio aún, la property queda
+   * lista del lado de Studio para cuando se agregue.
+   */
+  animation?: 'none' | 'fade' | 'slide-up';
+  show_link?: boolean;
+}
+
+const properties = (block.properties as TestimonialsProperties) ?? {};
+const link: ContentLink | undefined = block.links?.[0];
+const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean(link?.label);
+
+const PADDING_Y_CLASSES: Record<NonNullable<TestimonialsProperties['padding_y']>, string> = {
+  sm: 'py-10 3md:py-14',
+  md: 'py-14 3md:py-20',
+  lg: 'py-16 3md:py-24',
+  xl: 'py-20 3md:py-32',
+};
+
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+const sectionStyle = [
+  properties.background_color ? `background-color: ${properties.background_color};` : '',
+  properties.text_color ? `color: ${properties.text_color};` : '',
+]
+  .join(' ')
+  .trim();
+
+/**
+ * 2026-08-31, pedido del Tech Lead: el fondo de cada tarjeta no es opaco —
+ * el color elegido (`item_background_color`) se mezcla con transparencia,
+ * ahora configurable desde Studio (`properties.item_background_opacity`,
+ * 30% por defecto) en vez de un valor fijo en código. El hover sube +20
+ * puntos automáticamente (tope 100%), sin un campo propio para eso. Los
+ * porcentajes se pasan como custom properties (`--item-bg-opacity`/
+ * `--item-bg-hover-opacity`) y la mezcla real ocurre en el `<style>`
+ * scoped de abajo vía `color-mix()`, porque un hover real necesita CSS de
+ * verdad — un `style` inline no puede expresar un pseudo-selector `:hover`.
+ */
+const itemBackgroundOpacity = Math.min(100, Math.max(0, properties.item_background_opacity ?? 30));
+const itemBackgroundHoverOpacity = Math.min(100, itemBackgroundOpacity + 20);
+
+const cardStyle = properties.item_background_color
+  ? `--item-bg: ${properties.item_background_color}; --item-bg-opacity: ${itemBackgroundOpacity}%; --item-bg-hover-opacity: ${itemBackgroundHoverOpacity}%;`
+  : '';
+
+/** Iniciales como fallback de avatar (sin foto real cargada). */
+function initials(name?: string): string {
+  if (!name) return '';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+/**
+ * 2026-08-31, pedido del Tech Lead (calzar con el mockup real, "Nombre
+ * R."): nombre corto para la firma — el primer nombre completo + la
+ * inicial de la siguiente palabra (segundo nombre o apellido, no importa
+ * cuál sea — el dato es un string libre `name`, no hay campos separados
+ * de nombre/apellido). "María Fernanda Silva" → "María F.". Con un solo
+ * nombre (sin espacios) se muestra tal cual, sin inicial.
+ */
+function shortName(name?: string): string {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? '';
+
+  return `${parts[0]} ${parts[1][0]!.toUpperCase()}.`;
+}
+
+// Máximo de columnas en desktop (ver `sm:grid-cols-2 lg:grid-cols-3` más
+// abajo). Con más testimonios que esto, no entran todos en una sola fila
+// → carousel en vez de grilla estática.
+const MAX_GRID_ITEMS = 3;
+const useCarousel = items.length > MAX_GRID_ITEMS;
+---
+
+<section class="w-full" style={sectionStyle || undefined}>
+  <div class={`mx-auto flex max-w-6xl flex-col items-center gap-12 px-4 sm:px-6 lg:px-8 ${paddingYClass}`}>
+    {
+      (block.pretitle || block.title || block.subtitle) && (
+        <div class="flex w-full flex-col items-center gap-1 text-center">
+          {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
+          {block.title && <h2 class="w-full text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl">{block.title}</h2>}
+          {block.subtitle && <p class="w-full text-lg font-light opacity-90 md:text-base">{block.subtitle}</p>}
+        </div>
+      )
+    }
+
+    {
+      items.length > 0 && !useCarousel && (
+        <div class="grid w-full gap-8 md:grid-cols-2 2lg:grid-cols-3">
+          {items.map((item) => (
+            <blockquote class="testimonial-card flex flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 2lg:p-6 xl:p-10" style={cardStyle || undefined}>
+              {item.avatar?.url ? (
+                <img
+                  src={item.avatar.url}
+                  alt={item.avatar.alt_text ?? item.name ?? ''}
+                  class="h-24 w-24 rounded-full object-cover sm:h-28 sm:w-28 2lg:h-20 2lg:w-20 xl:h-28 xl:w-28"
+                  loading="lazy"
+                />
+              ) : (
+                <span class="flex h-24 w-24 items-center justify-center rounded-full bg-white/15 text-xl font-bold sm:h-28 sm:w-28 2lg:h-20 2lg:w-20 xl:h-28 xl:w-28" aria-hidden="true">
+                  {initials(item.name)}
+                </span>
+              )}
+              <p class="text-base italic opacity-95">{item.quote}</p>
+              <footer class="flex flex-col items-center gap-1">
+                <p class="font-semibold italic">— {shortName(item.name)}</p>
+                {item.role && <p class="text-sm italic opacity-80">{item.role}</p>}
+              </footer>
+            </blockquote>
+          ))}
+        </div>
+      )
+    }
+
+    {
+      items.length > 0 && useCarousel && (
+        <div class="w-full" data-testimonials-carousel>
+          <div
+            class="testimonials-track flex snap-x snap-mandatory gap-8 overflow-x-auto scroll-smooth pb-2"
+            data-testimonials-track
+          >
+            {items.map((item) => (
+              <blockquote
+                class="testimonial-card flex shrink-0 basis-full snap-center flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 md:basis-[calc(50%-1rem)] 2lg:basis-[calc(33.333%-1.334rem)] 2lg:p-6 xl:p-10"
+                style={cardStyle || undefined}
+                data-testimonials-item
+              >
+                {item.avatar?.url ? (
+                  <img
+                    src={item.avatar.url}
+                    alt={item.avatar.alt_text ?? item.name ?? ''}
+                    class="h-24 w-24 rounded-full object-cover sm:h-28 sm:w-28 2lg:h-20 2lg:w-20 xl:h-28 xl:w-28"
+                    loading="lazy"
+                  />
+                ) : (
+                  <span class="flex h-24 w-24 items-center justify-center rounded-full bg-white/15 text-xl font-bold sm:h-28 sm:w-28 2lg:h-20 2lg:w-20 xl:h-28 xl:w-28" aria-hidden="true">
+                    {initials(item.name)}
+                  </span>
+                )}
+                <p class="text-base italic opacity-95">{item.quote}</p>
+                <footer class="flex flex-col items-center gap-1">
+                  <p class="font-semibold italic">— {shortName(item.name)}</p>
+                  {item.role && <p class="text-sm italic opacity-80">{item.role}</p>}
+                </footer>
+              </blockquote>
+            ))}
+          </div>
+
+          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Testimonios">
+            {items.map((_, index) => (
+              <button
+                type="button"
+                class="data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-white/50 transition-all data-[active=true]:w-6"
+                data-testimonials-dot
+                data-index={index}
+                aria-label={`Ir al testimonio ${index + 1}`}
+                aria-selected={index === 0 ? 'true' : 'false'}
+                role="tab"
+              />
+            ))}
+          </div>
+        </div>
+      )
+    }
+
+    {
+      showLink && link && (
+        <a
+          href={link.href ?? '#'}
+          target={link.target}
+          rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+          class="mt-4 inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-current px-8 text-sm font-bold tracking-[0.1em] uppercase transition hover:bg-white/10"
+        >
+          <Icon name="ph:eye" size={18} aria-hidden="true" />
+          {link.label}
+        </a>
+      )
+    }
+  </div>
+</section>
+
+<style>
+  /* Scroll-snap nativo ya da swipe táctil gratis — solo se oculta la
+     scrollbar del track para que se vea como un carousel, no una lista con
+     overflow visible. */
+  .testimonials-track {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    /* 2026-08-31: el swipe horizontal lo maneja el drag handler de abajo
+       (Pointer Events, funciona igual con touch/mouse/pen) — `pan-y` le
+       dice al navegador que NO intente panear horizontal por su cuenta
+       (evita pelear con el JS) pero SÍ deje pasar el scroll vertical
+       normal de la página. */
+    touch-action: pan-y;
+    cursor: grab;
+  }
+
+  .testimonials-track::-webkit-scrollbar {
+    display: none;
+  }
+
+  .testimonials-track.is-dragging {
+    cursor: grabbing;
+    scroll-snap-type: none;
+    user-select: none;
+  }
+
+  .testimonials-track.is-dragging .testimonial-card {
+    pointer-events: none;
+  }
+
+  /* Fondo de cada tarjeta (2026-08-31, pedido del Tech Lead): no es el
+     color elegido a máxima opacidad — se mezcla con transparente
+     (`color-mix()`, funciona con cualquier formato de color que entregue
+     el `ColorPicker`, no solo hex). El % en reposo/hover es configurable
+     desde Studio (`--item-bg-opacity`/`--item-bg-hover-opacity`, ver
+     `item_background_opacity` más arriba, default 30%/50%). Sin
+     `--item-bg` seteado (bloque sin `item_background_color`) queda
+     transparente en ambos estados, sin romper nada. */
+  .testimonial-card {
+    background-color: color-mix(in srgb, var(--item-bg, transparent) var(--item-bg-opacity, 30%), transparent);
+  }
+
+  .testimonial-card:hover,
+  .testimonial-card:focus-within {
+    background-color: color-mix(in srgb, var(--item-bg, transparent) var(--item-bg-hover-opacity, 50%), transparent);
+  }
+</style>
+
+<script>
+  // Carousel vainilla JS de testimonios — mismo patrón que
+  // `Hero.astro` (`initHeroSliders`): auto-avance por `setInterval`,
+  // pausa en hover/foco/touch, respeta `prefers-reduced-motion`.
+  //
+  // 2026-08-31 (pedido del Tech Lead — "falta cambiar siguiente/anterior
+  // con touch o drag and drop"): el scroll-snap nativo del navegador daba
+  // swipe táctil "gratis" en teléfonos reales, pero NO daba drag con
+  // mouse en desktop (un `overflow-x-auto` no se arrastra con el mouse
+  // por defecto). Se agregó un drag handler propio con Pointer Events
+  // (`pointerdown`/`pointermove`/`pointerup`/`pointercancel`) que unifica
+  // mouse+touch+pen en la misma API — reemplaza al scroll-snap nativo
+  // como mecanismo de swipe/drag (CSS `touch-action: pan-y` le dice al
+  // navegador que no paneé horizontal por su cuenta, así no compiten), y
+  // al soltar hace snap suave al testimonio más cercano según cuánto se
+  // arrastró. Los puntos de navegación se sincronizan con la posición
+  // activa real (drag, auto-avance o click en un dot).
+  function initTestimonialsCarousels() {
+    const roots = document.querySelectorAll('[data-testimonials-carousel]');
+
+    roots.forEach((root) => {
+      if (!(root instanceof HTMLElement) || root.dataset.testimonialsInitialized === 'true') return;
+      root.dataset.testimonialsInitialized = 'true';
+
+      const track = root.querySelector('[data-testimonials-track]');
+      const items = Array.from(root.querySelectorAll('[data-testimonials-item]'));
+      const dots = Array.from(root.querySelectorAll('[data-testimonials-dot]'));
+
+      if (!(track instanceof HTMLElement) || items.length <= 1) return;
+
+      const intervalMs = 5000;
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      let current = 0;
+      let timer: number | undefined;
+      let resumeTimer: number | undefined;
+
+      function scrollToIndex(index: number) {
+        const next = ((index % items.length) + items.length) % items.length;
+        const target = items[next] as HTMLElement;
+        track!.scrollTo({ left: target.offsetLeft - (track as HTMLElement).offsetLeft, behavior: 'smooth' });
+        setActive(next);
+      }
+
+      function setActive(index: number) {
+        current = index;
+        dots.forEach((dot, dotIndex) => {
+          dot.setAttribute('data-active', dotIndex === index ? 'true' : 'false');
+          dot.setAttribute('aria-selected', dotIndex === index ? 'true' : 'false');
+        });
+      }
+
+      function stop() {
+        if (timer) window.clearInterval(timer);
+        timer = undefined;
+      }
+
+      function start() {
+        if (prefersReducedMotion) return;
+        stop();
+        timer = window.setInterval(() => scrollToIndex(current + 1), intervalMs);
+      }
+
+      // Pausa el auto-avance mientras el usuario interactúa (drag/swipe,
+      // hover, scroll con rueda/trackpad, foco por teclado) y lo retoma
+      // un instante después de soltar — mismo criterio de accesibilidad
+      // que `Hero.astro`.
+      function pauseThenResume() {
+        stop();
+        if (resumeTimer) window.clearTimeout(resumeTimer);
+        resumeTimer = window.setTimeout(start, 2500);
+      }
+
+      /** Testimonio cuyo borde izquierdo está más cerca del scroll actual. */
+      function nearestIndex(): number {
+        const trackEl = track as HTMLElement;
+        const targetLeft = trackEl.scrollLeft + trackEl.offsetLeft;
+
+        let closest = 0;
+        let closestDistance = Infinity;
+
+        items.forEach((item, index) => {
+          const distance = Math.abs((item as HTMLElement).offsetLeft - targetLeft);
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closest = index;
+          }
+        });
+
+        return closest;
+      }
+
+      // Drag con Pointer Events (mouse + touch + pen, misma API) — ver
+      // docblock de `initTestimonialsCarousels` más arriba. Mientras se
+      // arrastra, `scrollLeft` se mueve 1:1 con el puntero (asignación
+      // directa, instantánea — `scroll-behavior: smooth` de Tailwind NO
+      // aplica a esto, solo a llamadas a `scrollTo()`); al soltar, se
+      // suelta el drag y se hace un `scrollToIndex()` (ese sí animado) al
+      // testimonio más cercano.
+      let isDragging = false;
+      let dragPointerId: number | undefined;
+      let dragStartX = 0;
+      let dragStartScrollLeft = 0;
+
+      function onPointerDown(event: PointerEvent) {
+        isDragging = true;
+        dragPointerId = event.pointerId;
+        dragStartX = event.clientX;
+        dragStartScrollLeft = (track as HTMLElement).scrollLeft;
+        (track as HTMLElement).classList.add('is-dragging');
+        (track as HTMLElement).setPointerCapture(event.pointerId);
+        stop();
+      }
+
+      function onPointerMove(event: PointerEvent) {
+        if (!isDragging || event.pointerId !== dragPointerId) return;
+        (track as HTMLElement).scrollLeft = dragStartScrollLeft - (event.clientX - dragStartX);
+      }
+
+      function onPointerUp(event: PointerEvent) {
+        if (!isDragging || event.pointerId !== dragPointerId) return;
+        isDragging = false;
+        (track as HTMLElement).classList.remove('is-dragging');
+        scrollToIndex(nearestIndex());
+        pauseThenResume();
+      }
+
+      track.addEventListener('pointerdown', onPointerDown);
+      track.addEventListener('pointermove', onPointerMove);
+      track.addEventListener('pointerup', onPointerUp);
+      track.addEventListener('pointercancel', onPointerUp);
+      track.addEventListener('scroll', pauseThenResume, { passive: true });
+      root.addEventListener('mouseenter', stop);
+      root.addEventListener('mouseleave', start);
+      root.addEventListener('focusin', stop);
+      root.addEventListener('focusout', start);
+
+      dots.forEach((dot) => {
+        dot.addEventListener('click', () => {
+          const index = Number.parseInt(dot.getAttribute('data-index') ?? '0', 10);
+          scrollToIndex(index);
+          pauseThenResume();
+        });
+      });
+
+      setActive(0);
+      start();
+    });
+  }
+
+  initTestimonialsCarousels();
+  // Astro View Transitions no está en uso en este proyecto (ver
+  // BaseLayout.astro), pero por si Antigravity lo suma más adelante, este
+  // hook re-inicializa el carousel tras una navegación client-side.
+  document.addEventListener('astro:page-load', initTestimonialsCarousels);
+</script>

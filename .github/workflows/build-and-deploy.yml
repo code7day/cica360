@@ -1,0 +1,56 @@
+name: Build y deploy (CICA360 front)
+
+# Ver docs/context/ARCHITECTURE.md §6. El build corre acá (Node disponible
+# en el runner) — el shared hosting de destino nunca ejecuta Node, solo
+# recibe el `dist/` resultante por FTP/SFTP.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build (astro check + astro build)
+        run: npm run build
+        env:
+          STAMLESS_API_URL: ${{ secrets.STAMLESS_API_URL }}
+          STAMLESS_TENANT_SLUG: cica360
+          STAMLESS_API_TOKEN: ${{ secrets.STAMLESS_API_TOKEN }}
+          PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
+          PUBLIC_CONTACT_FORM_ENDPOINT: /contacto.php
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+      # --- Deploy ---
+      # Deshabilitado hasta confirmar credenciales reales del hosting (ver
+      # docs/context/CURRENT_STATE.md, bloqueador "tipo de shared hosting").
+      # Descomentar y configurar los secrets FTP_SERVER/FTP_USERNAME/
+      # FTP_PASSWORD en Settings -> Secrets del repo una vez confirmados.
+      #
+      # - name: Deploy a shared hosting (FTP)
+      #   uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      #   with:
+      #     server: ${{ secrets.FTP_SERVER }}
+      #     username: ${{ secrets.FTP_USERNAME }}
+      #     password: ${{ secrets.FTP_PASSWORD }}
+      #     local-dir: ./dist/
+      #     server-dir: ./
+      #     # No borrar contacto.config.php del servidor en cada deploy:
+      #     exclude: |
+      #       **/contacto.config.php

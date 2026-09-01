@@ -1,0 +1,32 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPosts } from '../../lib/api';
+
+const { data: posts } = await getPosts({ per_page: 50 });
+---
+
+<BaseLayout title="Blog" description="Novedades y artículos de CICA360.">
+  <section class="mx-auto max-w-4xl px-4 py-16">
+    <h1 class="mb-8 text-3xl font-bold">Blog</h1>
+
+    <ul class="flex flex-col gap-8">
+      {
+        posts.map((post) => (
+          <li>
+            <a href={`/blog/${post.slug}`} class="block">
+              <h2 class="text-xl font-semibold hover:underline">{post.title}</h2>
+              {post.excerpt && <p class="mt-1 text-gray-600">{post.excerpt}</p>}
+              {post.published_at && (
+                <time datetime={post.published_at} class="mt-2 block text-sm text-gray-400">
+                  {new Date(post.published_at).toLocaleDateString('es', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </time>
+              )}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+
+    {posts.length === 0 && <p class="text-gray-500">Todavía no hay artículos publicados.</p>}
+  </section>
+</BaseLayout>
