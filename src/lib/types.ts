@@ -68,6 +68,15 @@ export interface Media {
 export type LinkSourceType = 'page' | 'post' | 'custom' | 'url';
 export type LinkTarget = '_self' | '_blank';
 
+/**
+ * Ícono opcional por enlace — 1:1 con `LinkIconEnum` (genesis). Solo lo
+ * puebla el sub-bloque `link_list` de `colophon` (2026-09-02, "faltan
+ * iconos" en la columna Contacto); cualquier otro consumidor de
+ * `ContentLink` (CTAs de página, ítems de menú) siempre lo recibe `null`,
+ * sin efecto — ver `LINK_ICON_MAP` en `Colophon.astro`.
+ */
+export type LinkIcon = 'email' | 'phone' | 'whatsapp' | 'location' | 'link';
+
 export interface ContentLink {
   type: string;
   label: string | null;
@@ -75,6 +84,7 @@ export interface ContentLink {
   source_slug: string | null;
   href: string | null;
   target: LinkTarget;
+  icon?: LinkIcon | null;
 }
 
 /**
@@ -97,7 +107,10 @@ export type BlockType =
   | 'split'
   | 'testimonials'
   | 'logos'
-  | 'services_grid';
+  | 'services_grid'
+  | 'footer'
+  | 'colophon'
+  | 'footer_bottom';
 
 export interface Block {
   uuid: string;
@@ -167,10 +180,65 @@ export interface Post extends PostSummary {
 }
 
 // ---------------------------------------------------------------------------
+// Services
+// ---------------------------------------------------------------------------
+
+/**
+ * 2026-09-02 (ver ADR-044) — primer endpoint público del módulo de
+ * Servicios. `content` es JSON libre según el form de `ServiceResource`
+ * en Studio (Filament): párrafo intro + "¿Qué ofrecemos?" (checks) +
+ * "Coberturas" (acordeón) + "¿Por qué elegirnos?" + tip de ayuda — sin
+ * conversión a HTML del lado del backend (a diferencia de `Post.content`,
+ * que sí es rich text ya renderizado).
+ */
+export interface ServiceCountry {
+  iso: string;
+  name: string;
+}
+
+export interface ServiceOffer {
+  highlight: string;
+  text: string;
+}
+
+export interface ServiceCoverage {
+  label: string;
+  intro: string | null;
+  items: string[];
+}
+
+export interface ServiceContent {
+  intro?: string | null;
+  offers?: ServiceOffer[];
+  coverages?: ServiceCoverage[];
+  why_choose_us?: { title?: string | null; text?: string | null };
+  tip?: { title?: string | null; text?: string | null };
+  [key: string]: unknown;
+}
+
+export interface ServiceSummary {
+  uuid: string;
+  slug: string;
+  pretitle: string | null;
+  title: string;
+  subtitle: string | null;
+  countries: ServiceCountry[];
+  image: Media | null;
+}
+
+export interface Service extends ServiceSummary {
+  content: ServiceContent;
+  meta: PageMeta;
+  links: ContentLink[];
+  properties: Record<string, unknown>;
+  published_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Menus
 // ---------------------------------------------------------------------------
 
-export type MenuItemType = 'page' | 'post' | 'external' | 'custom';
+export type MenuItemType = 'page' | 'post' | 'service' | 'external' | 'custom';
 
 export interface MenuItem {
   uuid: string;
@@ -299,6 +367,101 @@ export interface Slider {
   slug: string;
   properties: SliderProperties;
   slides: Slide[];
+}
+
+// ---------------------------------------------------------------------------
+// Colophon (bloque `colophon`, pie de página multi-columna)
+// ---------------------------------------------------------------------------
+
+/**
+ * Plataformas del sub-bloque `social_links` — 1:1 con `SocialPlatformEnum`
+ * (genesis). El ícono real (predeterminado por plataforma) vive del lado de
+ * ESTE front, no del backend — ver `SOCIAL_PLATFORM_ICONS` en `Colophon.astro`.
+ */
+export type SocialPlatform = 'facebook' | 'instagram' | 'linkedin' | 'x' | 'youtube' | 'tiktok' | 'whatsapp';
+
+export interface ColophonLinkListData {
+  items: ContentLink[];
+}
+
+export interface ColophonSocialLinksData {
+  items: { platform: SocialPlatform; url: string }[];
+}
+
+export interface ColophonImageLinkData {
+  image: Media | null;
+  links: ContentLink[];
+}
+
+/**
+ * Sub-bloque anidado dentro de `content.columns[].blocks[]` — mismo shape
+ * `{type, data}` que un bloque de página normal (`Block`), pero SIN
+ * `uuid`/`pretitle`/`title`/`subtitle`/`properties`/`sort_order` propios
+ * (no son registros `Block` de la tabla, viven solo dentro del jsonb
+ * `content` del bloque `colophon`). `type` es un string ancho (no una unión
+ * cerrada) por el mismo motivo que `Block.type` — un tipo de sub-bloque
+ * desconocido debe poder pasar sin romper `ColumnBlockRenderer`.
+ */
+export interface ColophonSubBlock {
+  type: string;
+  data: ColophonLinkListData | ColophonSocialLinksData | ColophonImageLinkData | Record<string, unknown>;
+}
+
+export interface ColophonColumn {
+  title: string | null;
+  description: string | null;
+  blocks: ColophonSubBlock[];
+}
+
+export interface ColophonContent {
+  columns: ColophonColumn[];
+  /** Solo presente cuando `properties.background_type === 'image'` (2026-09-02, ver ADR-041 actualización). */
+  background_image?: Media | null;
+}
+
+/**
+ * Bloque `footer_bottom` — 2 campos opcionales, layout (centrado vs. a los
+ * costados) decidido en runtime por `FooterBottom.astro` según cuáles
+ * vengan no vacíos (ver `PageResource.php`, comentario del bloque).
+ */
+/** Ítem de menú ya resuelto (nivel principal únicamente, ver `ResolvesPublicLinks`). */
+export interface FooterBottomMenuItem {
+  title: string | null;
+  href: string | null;
+}
+
+export interface FooterBottomMenu {
+  name: string;
+  items: FooterBottomMenuItem[];
+}
+
+/**
+ * Bloque `footer_bottom` — rediseño 2026-09-02 (ver genesis ADR-042).
+ * `copyright_text`: personalizado, solo presente en planes pagos SIN
+ * plantilla forzada — el backend ya fuerza `null` en Free/Freemium (gate
+ * de white-label) y también en el plan Auspicio/Convenio (ver
+ * `copyright_html`), así que el frontend solo necesita un fallback
+ * hardcodeado cuando ambos vengan vacíos.
+ *
+ * `copyright_html` (2026-09-02, ADR-043, plan Auspicio/Convenio): HTML ya
+ * compuesto y sanitizado por el backend (`ResolvesPublicLinks` escapa el
+ * fragmento libre del tenant con `e()` antes de envolverlo en la plantilla
+ * fija "©[fragmento] - Todos los derechos son reservados <br/> Powered by
+ * Stamless") — SOLO presente para tenants en ese plan. Cuando viene, tiene
+ * prioridad sobre `copyright_text` (que en ese caso siempre es `null`) y
+ * se renderiza como HTML crudo, no como texto — ver `FooterBottom.astro`.
+ *
+ * Lado derecho (opcional, mutuamente excluyente): `menu` (ya resuelto,
+ * nivel principal + `href`) si se eligió "Mostrar menú"; `right_text` si
+ * se eligió "Mostrar texto personalizado"; ninguno de los 2 si no se
+ * seleccionó nada — en ese caso el div derecho no se renderiza.
+ */
+export interface FooterBottomContent {
+  copyright_text: string | null;
+  copyright_html?: string | null;
+  right_type?: 'menu' | 'text' | null;
+  menu?: FooterBottomMenu | null;
+  right_text?: string | null;
 }
 
 // ---------------------------------------------------------------------------

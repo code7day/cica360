@@ -1,0 +1,35 @@
+---
+/**
+ * Bloque `footer` (2026-09-01, pedido del Tech Lead): no tiene contenido
+ * propio — es una REFERENCIA a un Content tipo `Footer` del mismo tenant
+ * (seleccionado en Studio vía `content.footer_page_id`, mismo patrón que
+ * `hero` con `content.slider_id`). El backend (`ResolvesPublicLinks.php`)
+ * resuelve la página referenciada completa y la entrega ya anidada en
+ * `content.footer_page.blocks[]`, con la MISMA forma que produce
+ * `BlockResource` para cualquier bloque normal — por eso acá simplemente
+ * se re-despachan esos bloques al `BlockRenderer` genérico, sin lógica
+ * de renderizado propia.
+ *
+ * Reemplaza el mecanismo anterior (fetch fijo a `footer-principal` en
+ * `BaseLayout.astro`/`Footer.astro`): ahora cada Página/Landing decide
+ * explícitamente, agregando este bloque, a qué Content tipo `Footer` se
+ * asocia — varias páginas pueden compartir el mismo footer agregando el
+ * mismo bloque con el mismo `footer_page_id`.
+ */
+import type { Block } from '../../lib/types';
+import BlockRenderer from './BlockRenderer.astro';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+const content = block.content as {
+  footer_page?: { slug: string; blocks: Block[] } | null;
+};
+
+const footerBlocks = content.footer_page?.blocks ?? [];
+---
+
+{footerBlocks.length > 0 && footerBlocks.map((footerBlock) => <BlockRenderer block={footerBlock} />)}

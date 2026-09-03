@@ -75,25 +75,43 @@ interface NormalizedSlide {
 /**
  * `position_container` (2026-08-30, pedido del Tech Lead): posición del
  * contenedor de pretitle/title/subtitle/CTA sobre el slide, una de 9
- * combinaciones `{top|middle|bottom}-{left|center|right}`. Se aplica desde
- * `3md:` (960px, breakpoint custom del proyecto — ver `--breakpoint-3md`
- * en `global.css`) hacia arriba — por debajo de eso (mobile Y tablets
- * chicas) SIEMPRE se fuerza abajo-centro (clases base del contenedor, sin
- * prefijo), sin importar esta config, por regla de negocio fija del MVP
- * confirmada por el Tech Lead el 2026-08-31 (antes el corte mobile-only
- * era `sm:`/540px — se corrigió a `3md:`/960px porque tablets chicas
- * también deben mostrar la posición forzada, no solo teléfonos).
+ * combinaciones `{top|middle|bottom}-{left|center|right}`.
+ *
+ * Regla de mobile corregida (2026-09-01, el Tech Lead vio en el celular
+ * un slide `bottom-left` y aclaró la regla real — la versión anterior
+ * forzaba TODO a abajo-centro en mobile, ejes X e Y por igual): en mobile
+ * y tablets chicas (<3md/960px) el eje X (horizontal, `justify-*`)
+ * SIEMPRE se fuerza a centro sin importar la config — pero el eje Y
+ * (vertical, `items-*`) respeta la configuración real del slide en TODOS
+ * los tamaños, mobile incluido. Es decir: `bottom-left` → mobile queda
+ * `bottom-center` (mantiene abajo, fuerza centro); `top-right` → mobile
+ * queda `top-center`; `middle-right` → mobile queda `middle-center`. Por
+ * eso el eje Y se separa en su propio helper SIN prefijo de breakpoint
+ * (activo siempre) y el eje X mantiene el prefijo `3md:` sobre una base
+ * `justify-center` fija (el forzado de mobile).
  */
-const POSITION_CONTAINER_CLASSES: Record<PositionContainer, string> = {
-  'top-left': '3md:items-start 3md:justify-start',
-  'top-center': '3md:items-start 3md:justify-center',
-  'top-right': '3md:items-start 3md:justify-end',
-  'middle-left': '3md:items-center 3md:justify-start',
-  'middle-center': '3md:items-center 3md:justify-center',
-  'middle-right': '3md:items-center 3md:justify-end',
-  'bottom-left': '3md:items-end 3md:justify-start',
-  'bottom-center': '3md:items-end 3md:justify-center',
-  'bottom-right': '3md:items-end 3md:justify-end',
+const POSITION_CONTAINER_Y_CLASSES: Record<PositionContainer, string> = {
+  'top-left': 'items-start',
+  'top-center': 'items-start',
+  'top-right': 'items-start',
+  'middle-left': 'items-center',
+  'middle-center': 'items-center',
+  'middle-right': 'items-center',
+  'bottom-left': 'items-end',
+  'bottom-center': 'items-end',
+  'bottom-right': 'items-end',
+};
+
+const POSITION_CONTAINER_X_CLASSES: Record<PositionContainer, string> = {
+  'top-left': '3md:justify-start',
+  'top-center': '3md:justify-center',
+  'top-right': '3md:justify-end',
+  'middle-left': '3md:justify-start',
+  'middle-center': '3md:justify-center',
+  'middle-right': '3md:justify-end',
+  'bottom-left': '3md:justify-start',
+  'bottom-center': '3md:justify-center',
+  'bottom-right': '3md:justify-end',
 };
 
 /**
@@ -109,8 +127,12 @@ const ALIGN_CONTENT_CLASSES: Record<AlignContent, string> = {
   right: '3md:items-end 3md:text-right',
 };
 
-function positionContainerClasses(properties: SlideProperties): string {
-  return POSITION_CONTAINER_CLASSES[properties.position_container ?? 'bottom-center'];
+function positionContainerYClasses(properties: SlideProperties): string {
+  return POSITION_CONTAINER_Y_CLASSES[properties.position_container ?? 'bottom-center'];
+}
+
+function positionContainerXClasses(properties: SlideProperties): string {
+  return POSITION_CONTAINER_X_CLASSES[properties.position_container ?? 'bottom-center'];
 }
 
 function alignContentClasses(properties: SlideProperties): string {
@@ -131,7 +153,8 @@ function backgroundEffectStyle(properties: SlideProperties): string {
   if (properties.slide_background_filter_grayscale != null) filters.push(`grayscale(${properties.slide_background_filter_grayscale}%)`);
   if (properties.slide_background_filter_sepia != null) filters.push(`sepia(${properties.slide_background_filter_sepia}%)`);
   if (properties.slide_background_filter_contrast != null) filters.push(`contrast(${properties.slide_background_filter_contrast}%)`);
-  if (properties.slide_background_filter_hue_rotate != null) filters.push(`hue-rotate(${properties.slide_background_filter_hue_rotate}deg)`);
+  if (properties.slide_background_filter_hue_rotate != null)
+    filters.push(`hue-rotate(${properties.slide_background_filter_hue_rotate}deg)`);
   if (properties.slide_background_filter_blur != null) filters.push(`blur(${properties.slide_background_filter_blur}px)`);
 
   const opacity = (properties.slide_background_opacity ?? 100) / 100;
@@ -221,7 +244,7 @@ const slides: NormalizedSlide[] = slidesFromSlider.length > 0 ? slidesFromSlider
  */
 const showScrollIndicator = slider
   ? Boolean(slider.properties?.show_scroll_indicator)
-  : Boolean((block.properties as SlideProperties)?.show_scroll_indicator);
+  : Boolean((block.properties as Record<string, unknown>)?.show_scroll_indicator);
 
 if (slides.length === 0 && import.meta.env.DEV) {
   // eslint-disable-next-line no-console
@@ -336,10 +359,13 @@ if (slides.length === 0 && import.meta.env.DEV) {
             {/*
               `position_container` (2026-08-30): posición del contenedor
               sobre el slide, configurable por slide vía `properties`
-              (9 combinaciones). Reemplaza el anclaje fijo "abajo-centro"
-              anterior — ese sigue siendo el default Y lo que se fuerza
-              siempre por debajo de `3md` (960px, mobile + tablets chicas,
-              clases base sin prefijo, ver `POSITION_CONTAINER_CLASSES`).
+              (9 combinaciones). Eje Y (`items-*`, este div): a diferencia
+              del eje X, respeta la config real del slide en TODOS los
+              tamaños, mobile incluido (corregido 2026-09-01, ver el
+              comentario junto a `POSITION_CONTAINER_Y_CLASSES` más arriba
+              — el forzado de mobile es SOLO horizontal) — por eso acá
+              `positionContainerYClasses()` no lleva prefijo `3md:`, va
+              directo como clase base.
 
               Padding vertical (2026-08-31, mismo pedido del Tech Lead que
               el padding horizontal de arriba): antes era `pb-*` (solo
@@ -351,9 +377,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
               base (mobile + tablets chicas, <3md/960px) y `3md:py-[150px]`
               desde 960px en adelante.
             */}
-            <div
-              class={`relative z-10 flex h-full items-end py-[120px] text-center 3md:py-[150px] ${positionContainerClasses(slide.properties)}`}
-            >
+            <div class={`3md:py-[150px] relative z-10 flex h-full py-[120px] text-center ${positionContainerYClasses(slide.properties)}`}>
               {/*
                 Caja "boxed" de contenido (2026-08-31, pedido del Tech
                 Lead): antes el texto quedaba pegado a los extremos del
@@ -368,10 +392,14 @@ if (slides.length === 0 && import.meta.env.DEV) {
                 `position_container` (izquierda/centro/derecha) posiciona
                 el texto DENTRO de esta caja de 1200px, no del viewport
                 completo. `justify-center` va como clase BASE (sin
-                prefijo): es el valor forzado en mobile/tablets chicas
-                (<3md, ver `POSITION_CONTAINER_CLASSES`) y también el
-                fallback mientras no hay ningún `justify-*` explícito de
-                por medio.
+                prefijo): es el forzado FIJO de mobile/tablets chicas
+                (<3md/960px, regla de negocio confirmada por el Tech Lead
+                — a diferencia del eje Y de arriba, el eje X SIEMPRE es
+                centro por debajo de `3md`, sin importar la config del
+                slide) y también el fallback mientras no hay ningún
+                `justify-*` explícito de por medio; `positionContainerXClasses()`
+                pisa ese base con el valor real (`3md:justify-*`) desde
+                960px en adelante.
 
                 Padding horizontal reforzado desde `3md` (2026-08-31): la
                 convención del navbar (`px-4 sm:px-6 lg:px-8`) alcanza
@@ -387,9 +415,31 @@ if (slides.length === 0 && import.meta.env.DEV) {
                 plana del navbar, acá se justifica el padding fijo y
                 generoso porque el contenido sí puede tocar el extremo, el
                 navbar no.
+
+                Desde `3xl` (1536px, breakpoint real del proyecto — ver
+                `--breakpoint-3xl` en `global.css`; corregido 2026-09-01 de
+                un intento anterior en `2xl`/1440px a pedido del Tech Lead),
+                pedido del Tech Lead viendo el Hero en pantalla grande con
+                `position_container: bottom-left`: la caja `max-w-[1200px]
+                mx-auto` queda MAL en pantallas anchas para contenido
+                anclado a la izquierda — al estar centrada respecto al
+                viewport completo, el texto "izquierda" en realidad flota
+                lejos del borde real (la mitad del espacio sobrante de
+                `(viewport - 1200px)` cae a la izquierda del box antes de
+                llegar al `px-[100px]`). Desde 1536px se saca el límite de
+                1200px (`3xl:max-w-none` — el `mx-auto` queda sin efecto
+                visible, un contenedor full-width no necesita margen
+                automático) y el padding pasa a 200px fijos en AMBOS lados
+                respecto al viewport real (`3xl:px-[200px]`, pisa el
+                `100px` de `3md:px-[100px]` simétricamente — el Tech Lead
+                confirmó que quería los dos lados iguales, no solo el
+                izquierdo). Con `max-w-none`, `justify-center` sigue centrando
+                correctamente sobre el viewport completo (matemáticamente
+                igual a centrar sobre una caja ya centrada), así que esto
+                no afecta a los slides con posición center/right.
               */}
               <div
-                class={`mx-auto flex w-full max-w-[1200px] justify-center px-[60px] 3md:px-[100px] ${positionContainerClasses(slide.properties)}`}
+                class={`3md:px-[100px] 3xl:max-w-none 3xl:px-[200px] mx-auto flex w-full max-w-[1200px] justify-center px-[60px] ${positionContainerXClasses(slide.properties)}`}
               >
                 {/*
                   `align_content` (2026-08-30): alineación del texto/CTA
@@ -400,14 +450,14 @@ if (slides.length === 0 && import.meta.env.DEV) {
                 */}
                 <div class={`flex w-full max-w-2xl flex-col items-center text-center ${alignContentClasses(slide.properties)}`}>
                   {slide.pretitle && (
-                  <p
-                    class="hero-anim-play text-cicagold-500 mb-3 text-sm font-semibold tracking-[0.2em] uppercase"
-                    data-hero-anim="pretitle"
-                  >
-                    {slide.pretitle}
-                  </p>
-                )}
-                {/*
+                    <p
+                      class="hero-anim-play text-cicagold-500 mb-3 text-sm font-semibold tracking-[0.2em] uppercase"
+                      data-hero-anim="pretitle"
+                    >
+                      {slide.pretitle}
+                    </p>
+                  )}
+                  {/*
                   Lato Black Italic (900 italic), ~64px en desktop — valor real
                   tomado del panel de tipografía del diseño (no estimado). El
                   manual de marca (Baskerville) es solo para el logo, no aplica acá.
@@ -415,53 +465,57 @@ if (slides.length === 0 && import.meta.env.DEV) {
                   no configurable): fade + scale, siempre la primera en
                   jugar — ver `hero-anim-*` en el <style> de más abajo.
                 */}
-                {slide.title &&
-                  (index === 0 ? (
-                    <h1
-                      class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
-                      data-hero-anim="title"
-                    >
-                      {slide.title}
-                    </h1>
-                  ) : (
-                    // Solo el primer slide usa <h1> (SEO: un único heading principal por
-                    // página) — el resto son <h2> con el mismo estilo visual.
-                    <h2
-                      class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
-                      data-hero-anim="title"
-                    >
-                      {slide.title}
-                    </h2>
-                  ))}
-                {/* Body Large (Design System, pág. Tipografía): Lato Light / 20px */}
-                {slide.subtitle && (
-                  <p class="hero-anim-play mt-4 text-xl font-light text-white/90" data-hero-anim="subtitle">
-                    {slide.subtitle}
-                  </p>
-                )}
-                {/*
+                  {slide.title &&
+                    (index === 0 ? (
+                      <h1
+                        class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
+                        data-hero-anim="title"
+                      >
+                        {slide.title}
+                      </h1>
+                    ) : (
+                      // Solo el primer slide usa <h1> (SEO: un único heading principal por
+                      // página) — el resto son <h2> con el mismo estilo visual.
+                      <h2
+                        class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
+                        data-hero-anim="title"
+                      >
+                        {slide.title}
+                      </h2>
+                    ))}
+                  {/* Body Large (Design System, pág. Tipografía): Lato Light / 20px */}
+                  {slide.subtitle && (
+                    <p class="hero-anim-play mt-4 text-xl font-light text-white/90" data-hero-anim="subtitle">
+                      {slide.subtitle}
+                    </p>
+                  )}
+                  {/*
                   CTA — Call to Action (Design System, pág. "btn-link — Sistema
                   de Botones", "Usado en Hero y secciones de conversión"):
                   Size 276×56, Padding 12 32, Fill #EFB814/hover #D9A00F,
                   Border #EFB814 1px inside, Text #2D2C4D/hover #090921,
-                  Font Lato Bold 16/28, Icon 24×24. Radio y sombra quedan
-                  como decisión explícita del Tech Lead (rounded-full en vez
-                  de 12px, una sola sombra en vez de las dos del spec — ver
-                  TASK.md). Mayúsculas vía CSS (`uppercase`), el texto real
-                  del CMS queda en su case original (accesibilidad/semántica).
+                  Font Lato Bold 16/28, Icon 24×24. Una sola sombra en vez de
+                  las dos del spec (decisión que se mantiene). El radio SÍ
+                  cambió (2026-09-01, revierte la decisión anterior de
+                  `rounded-full` documentada en TASK.md): el Tech Lead pidió
+                  alinear el radio de TODOS los botones/CTA del sitio
+                  (`cta`, `rich_text`, y ahora el del Hero) al mismo estándar
+                  moderado `rounded-lg`, no pill. Mayúsculas vía CSS
+                  (`uppercase`), el texto real del CMS queda en su case
+                  original (accesibilidad/semántica).
                 */}
-                {slide.ctaLabel && slide.ctaHref && (
-                  <a
-                    href={slide.ctaHref}
-                    target={slide.ctaTarget}
-                    rel={slide.ctaTarget === '_blank' ? 'noopener noreferrer' : undefined}
-                    class="hero-anim-play border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900 mt-8 inline-flex h-14 items-center justify-center gap-2 rounded-full border px-8 text-base leading-7 font-bold uppercase shadow-xl transition"
-                    data-hero-anim="cta"
-                  >
-                    {slide.ctaLabel}
-                    <Icon name="ph:caret-right" size={24} aria-hidden="true" />
-                  </a>
-                )}
+                  {slide.ctaLabel && slide.ctaHref && (
+                    <a
+                      href={slide.ctaHref}
+                      target={slide.ctaTarget}
+                      rel={slide.ctaTarget === '_blank' ? 'noopener noreferrer' : undefined}
+                      class="hero-anim-play border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900 mt-8 inline-flex h-14 items-center justify-center gap-2 rounded-lg border px-8 text-base leading-7 font-bold uppercase shadow-xl transition"
+                      data-hero-anim="cta"
+                    >
+                      {slide.ctaLabel}
+                      <Icon name="ph:caret-right" size={24} aria-hidden="true" />
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
@@ -517,7 +571,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
           (`RichText.astro`).
         */}
         {showScrollIndicator && (
-          <div class="pointer-events-none absolute bottom-2 left-1/2 z-20 -translate-x-1/2 sm:bottom-4" aria-hidden="true">
+          <div class="pointer-events-none absolute bottom-8 left-1/2 z-20 -translate-x-1/2 sm:bottom-8" aria-hidden="true">
             <Icon name="ph:caret-down" class="text-cicagold-500 size-6 animate-bounce" />
           </div>
         )}
@@ -554,19 +608,19 @@ if (slides.length === 0 && import.meta.env.DEV) {
           */}
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 left-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6 3md:h-14 3md:w-14"
+            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 left-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6"
             data-hero-prev
             aria-label="Slide anterior"
           >
-            <Icon name="ph:caret-left" class="size-5 3md:size-8" />
+            <Icon name="ph:caret-left" class="3md:size-8 size-5" />
           </button>
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 right-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6 3md:h-14 3md:w-14"
+            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 right-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6"
             data-hero-next
             aria-label="Slide siguiente"
           >
-            <Icon name="ph:caret-right" class="size-5 3md:size-8" />
+            <Icon name="ph:caret-right" class="3md:size-8 size-5" />
           </button>
 
           <div class="absolute bottom-14 left-6 z-20 flex gap-2 sm:left-8" role="tablist" aria-label="Seleccionar slide">
@@ -584,7 +638,6 @@ if (slides.length === 0 && import.meta.env.DEV) {
           </div>
         </>
       )}
-
     </section>
   )
 }

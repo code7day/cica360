@@ -1,0 +1,298 @@
+---
+/**
+ * Bloque `colophon` (2026-09-02, pedido del Tech Lead): pie de página
+ * multi-columna, exclusivo de Content tipo `Footer` (ver `PageResource.php`,
+ * `$footerOnlyBlocks`). Sin `pretitle`/`title`/`subtitle` propios — no tiene
+ * heading ("no tendrá header o heading"), solo `content.columns[]` (hasta
+ * 4, cada una con su propio título corto + descripción + hasta N
+ * sub-bloques).
+ *
+ * Cada columna es independiente y puede combinar cualquier cantidad de
+ * sub-bloques (`link_list`/`social_links`/`image_link`, mismo Builder
+ * anidado que en Studio — "botón dropdown para elegir subbloques") — el
+ * `.map()` de sub-bloques más abajo es un mini-dispatcher inline (mismo
+ * espíritu que `BlockRenderer.astro`/`componentsByType`, pero sin un mapa
+ * de componentes separado: son solo 3 tipos, sin margen para crecer sin
+ * tocar código de todos modos).
+ *
+ * 2026-09-02, 2 correcciones sobre una captura en vivo del Tech Lead
+ * ("falta iconos y el logo gris poner en el footer de forma hardcode
+ * acompañando con el texto entre comillas, sin título... no usar el típico
+ * heading"):
+ *   - `link_list`: cada ítem gana un ícono opcional (`LinkIconEnum`,
+ *     `LINK_ICON_MAP` más abajo) — mismo patrón que `social_links`.
+ *   - "Columna de marca": una columna SIN título pero CON descripción (por
+ *     convención, sin campo nuevo en Studio) renderiza el wordmark gris
+ *     HARDCODEADO (`/logos/logo-main-gray.svg`, mismo criterio que
+ *     `Header.astro` — es un asset del sitio, no contenido de tenant) +
+ *     la descripción como cita en itálica entre comillas tipográficas. Ver
+ *     `isBrandColumn()`.
+ *
+ * 2026-09-02, ajuste fino sobre captura en vivo del Tech Lead ("queda mejor
+ * pero el logo con el texto debajo debe estar alineado a la izquierda y el
+ * texto tiene que partirse en 2 líneas... el color de los títulos... son
+ * dorados"): cada columna gana `items-start text-left` explícito (antes
+ * dependía del comportamiento default de `flex-col`, que en algunos casos
+ * deja el `<img>` estirado/centrado); la cita de la columna de marca gana
+ * `max-w-[230px]` para forzar el corte a 2 líneas del mockup; los títulos
+ * `<h3>` de cualquier columna pasan a `text-cicagold-500` (dorado de marca,
+ * `#EFB814`) en vez de heredar `properties.text_color` del bloque — mismo
+ * criterio "brand hardcodeado" que el logo gris.
+ *
+ * 2026-09-02, responsive mobile (captura en vivo: "en mobile ajustar
+ * responsive, logo y quote, centrado, y debajo Contacto y Síguenos
+ * centrado también"): cada columna es `items-center text-center` por
+ * default (mobile, 1 columna apilada) y recién pasa a `items-start
+ * text-left` desde `sm:` — el mismo breakpoint en el que `GRID_COLS_CLASSES`
+ * arranca el grid multi-columna (`sm:grid-cols-2`). El pedido de
+ * alineación a la izquierda de la corrección anterior (logo/quote) seguía
+ * aplicando solo a partir de ahí, nunca se pidió para mobile apilado. Los
+ * íconos de `social_links` (`flex flex-wrap`) ganan `justify-center
+ * sm:justify-start` a juego, para que la fila se centre como grupo en vez
+ * de pegarse al borde izquierdo si el texto queda centrado alrededor.
+ */
+import type { Block, BlendMode, ColophonContent, ColophonColumn, ColophonSubBlock, ColophonLinkListData, ColophonSocialLinksData, ColophonImageLinkData } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
+import { Icon } from 'astro-icon/components';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as unknown as ColophonContent;
+const columns = content?.columns ?? [];
+
+interface ColophonProperties extends BackgroundColorProperties {
+  content_width?: 'full' | 'boxed' | 'narrow';
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  // 2026-09-02, pedido del Tech Lead ("debería tener también la
+  // posibilidad de tener una imagen con los filtros y blend que necesiten
+  // personalizar") — mismo set `media_*` que `cta`/`split`/`heading`, ver
+  // ADR-041 actualización. Solo aplica con `background_type: 'image'`.
+  media_blend_mode?: BlendMode | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
+}
+
+const properties = (block.properties as ColophonProperties) ?? {};
+
+const backgroundStyle = resolveBackgroundStyle(properties);
+const textColorStyle = properties.text_color ? `color: ${properties.text_color};` : '';
+const sectionStyle = `${backgroundStyle} ${textColorStyle}`.trim();
+
+// Imagen de fondo opcional (excluyente con color/degradado — ver
+// `PropertiesSchema::background_color`, genesis) — mismo helper que
+// `Cta.astro` (`backgroundImageEffectStyle()`), sin extraerlo a un lib
+// compartido todavía porque solo lo usan estos 2 bloques.
+function backgroundImageEffectStyle(props: ColophonProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
+
+const CONTENT_WIDTH_CLASSES: Record<NonNullable<ColophonProperties['content_width']>, string> = {
+  boxed: 'max-w-6xl px-4 sm:px-6 lg:px-8',
+  narrow: 'max-w-4xl px-4 sm:px-6 lg:px-8',
+  full: 'max-w-none px-6 3md:px-[80px]',
+};
+const contentWidthClass = CONTENT_WIDTH_CLASSES[properties.content_width ?? 'boxed'];
+
+const PADDING_Y_CLASSES: Record<NonNullable<ColophonProperties['padding_y']>, string> = {
+  sm: 'py-8 3md:py-10',
+  md: 'py-10 3md:py-14',
+  lg: 'py-12 3md:py-16',
+  xl: 'py-16 3md:py-20',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+// Grillas responsive según cuántas columnas se cargaron en Studio (1 a 4,
+// ya limitado ahí por `->maxItems(4)`) — nunca más columnas visibles que
+// las que realmente existen.
+//
+// 2026-09-02, spec de breakpoints exacta pedida en vivo por el Tech Lead
+// (usando la escala custom del proyecto, ver `--breakpoint-*` en
+// `global.css`: `sm` = 540px, `md` = 768px):
+//   - < 540px: 1 columna apilada, todo centrado (ver el wrapper de cada
+//     columna más abajo).
+//   - 540–767px (`sm:` hasta antes de `md:`): grid de 2 columnas. La
+//     columna de marca (logo+quote) ocupa la fila completa
+//     (`sm:col-span-2`, ver el wrapper de columna) y el resto de columnas
+//     (ej. "Contacto"/"Síguenos") caen en una sola fila de 2 debajo.
+//   - `md:` (768px) en adelante: todas las columnas cargadas caben en una
+//     sola fila ("de 768px a más mantener una sola línea con 3 columnas",
+//     con 3 columnas siendo el caso real de CICA360 hoy: marca+Contacto+
+//     Síguenos) — el bump a N columnas pasa a `md:` en vez de `lg:` a
+//     propósito, antes quedaba una franja ancha (768–1079px) todavía en
+//     2 columnas que ya no aplica con este pedido.
+const GRID_COLS_CLASSES: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-1 sm:grid-cols-2',
+  3: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3',
+  4: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-4',
+};
+const gridColsClass = GRID_COLS_CLASSES[Math.min(4, Math.max(1, columns.length))] ?? GRID_COLS_CLASSES[1];
+
+// Ícono predeterminado por plataforma (2026-09-02) — Phosphor ya trae logo
+// de marca para las 7 (`ph:{plataforma}-logo-fill`), sin depender de un
+// segundo set de íconos solo para esto.
+const SOCIAL_PLATFORM_ICONS: Record<string, string> = {
+  facebook: 'ph:facebook-logo-fill',
+  instagram: 'ph:instagram-logo-fill',
+  linkedin: 'ph:linkedin-logo-fill',
+  x: 'ph:x-logo-fill',
+  youtube: 'ph:youtube-logo-fill',
+  tiktok: 'ph:tiktok-logo-fill',
+  whatsapp: 'ph:whatsapp-logo-fill',
+};
+
+// Ícono opcional por link de `link_list` (2026-09-02, "faltan iconos" en la
+// columna Contacto) — mismo criterio que `SOCIAL_PLATFORM_ICONS`: el backend
+// (`LinkIconEnum`) solo manda la clave, el ícono real vive acá.
+const LINK_ICON_MAP: Record<string, string> = {
+  email: 'ph:paper-plane-tilt-fill',
+  phone: 'ph:phone-fill',
+  whatsapp: 'ph:whatsapp-logo-fill',
+  location: 'ph:map-pin-fill',
+  link: 'ph:link',
+};
+
+// Columna "de marca" (2026-09-02, pedido del Tech Lead: "el logo gris poner
+// en el footer de forma hardcode acompañando con el texto entre comillas,
+// sin título... no usar el típico heading") — por convención, no por un
+// campo nuevo en Studio: una columna de `colophon` SIN título pero CON
+// descripción se trata como la columna de marca. El wordmark en sí NO es
+// contenido de tenant — mismo criterio que `Header.astro`, que ya hardcodea
+// los 3 SVG de `public/logos/` (son del sitio, gris = versión "sin uso
+// todavía" que menciona ese archivo, ahora sí tiene un lugar).
+function isBrandColumn(column: ColophonColumn): boolean {
+  return !column.title && Boolean(column.description);
+}
+---
+
+<section class="relative w-full overflow-hidden" style={sectionStyle || undefined}>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
+
+  <div class={`relative z-10 mx-auto ${contentWidthClass} ${paddingYClass}`}>
+    <div class={`grid gap-8 ${gridColsClass}`}>
+      {
+        columns.map((column: ColophonColumn) => (
+          <div
+            class:list={[
+              'flex flex-col items-center gap-3 text-center md:items-start md:text-left',
+              isBrandColumn(column) && 'sm:col-span-2 md:col-span-1',
+            ]}
+          >
+            {isBrandColumn(column) ? (
+              <>
+                <img src="/logos/logo-main-gray.svg" alt="CICA360" class="h-8 w-auto opacity-80" loading="lazy" />
+                <p class="max-w-[230px] text-sm italic opacity-80">&ldquo;{column.description}&rdquo;</p>
+              </>
+            ) : (
+              <>
+                {column.title && <h3 class="text-cicagold-500 text-lg font-semibold">{column.title}</h3>}
+                {column.description && <p class="text-sm opacity-80">{column.description}</p>}
+              </>
+            )}
+
+            <div class="mt-1 flex flex-col gap-4">
+              {(column.blocks ?? []).map((subBlock: ColophonSubBlock) => {
+                if (subBlock.type === 'link_list') {
+                  const data = subBlock.data as ColophonLinkListData;
+                  return (
+                    <ul class="flex flex-col gap-2">
+                      {(data.items ?? []).map(
+                        (link) =>
+                          link.href &&
+                          link.label && (
+                            <li>
+                              <a
+                                href={link.href}
+                                target={link.target}
+                                rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+                                class="inline-flex items-center gap-2 text-sm opacity-90 transition hover:opacity-100 hover:underline"
+                              >
+                                {link.icon && <Icon name={LINK_ICON_MAP[link.icon] ?? 'ph:link'} size={16} aria-hidden="true" />}
+                                {link.label}
+                              </a>
+                            </li>
+                          ),
+                      )}
+                    </ul>
+                  );
+                }
+
+                if (subBlock.type === 'social_links') {
+                  const data = subBlock.data as ColophonSocialLinksData;
+                  return (
+                    <div class="flex flex-wrap justify-center gap-3 md:justify-start">
+                      {(data.items ?? []).map(
+                        (social) =>
+                          social.url && (
+                            <a
+                              href={social.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={social.platform}
+                              class="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 transition hover:bg-white/20"
+                            >
+                              <Icon name={SOCIAL_PLATFORM_ICONS[social.platform] ?? 'ph:link'} size={20} aria-hidden="true" />
+                            </a>
+                          ),
+                      )}
+                    </div>
+                  );
+                }
+
+                if (subBlock.type === 'image_link') {
+                  const data = subBlock.data as ColophonImageLinkData;
+                  const href = data.links?.[0]?.href;
+                  const img = data.image?.url && <img src={data.image.url} alt={data.image.alt_text ?? ''} class="max-h-16 w-auto object-contain" loading="lazy" />;
+
+                  if (!img) return null;
+
+                  return href ? (
+                    <a href={href} target={data.links?.[0]?.target ?? '_self'} rel={data.links?.[0]?.target === '_blank' ? 'noopener noreferrer' : undefined}>
+                      {img}
+                    </a>
+                  ) : (
+                    img
+                  );
+                }
+
+                return null;
+              })}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

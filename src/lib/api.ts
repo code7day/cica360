@@ -10,9 +10,10 @@ import type {
   Paginated,
   Post,
   PostSummary,
+  Service,
+  ServiceSummary,
   Slider,
 } from './types';
-
 /**
  * Cliente del API Stamless — SOLO para uso en build time (frontmatter de
  * `.astro`, `getStaticPaths`). Usa `STAMLESS_API_TOKEN` (ability
@@ -32,7 +33,7 @@ function assertServerContext(): void {
   if (typeof window !== 'undefined') {
     throw new Error(
       '[api.ts] Este cliente usa el token de content:read y no debe ejecutarse en el navegador. ' +
-        'Si necesitás datos en un componente cliente, resolvelos en build time y pasalos como props.',
+      'Si necesitás datos en un componente cliente, resolvelos en build time y pasalos como props.',
     );
   }
 }
@@ -58,15 +59,19 @@ function assertServerContext(): void {
 let insecureTlsWarningShown = false;
 
 function applyInsecureTlsOptIn(): void {
-  if (import.meta.env.STAMLESS_DEV_INSECURE_TLS !== 'true') return;
+  const isInsecure =
+    import.meta.env.STAMLESS_DEV_INSECURE_TLS === 'true' ||
+    process.env.STAMLESS_DEV_INSECURE_TLS === 'true';
+
+  if (!isInsecure) return;
   if (insecureTlsWarningShown) return;
   insecureTlsWarningShown = true;
 
   // eslint-disable-next-line no-console
   console.warn(
     '[api.ts] STAMLESS_DEV_INSECURE_TLS=true — verificación TLS desactivada a mano para este build. ' +
-      'Esto es un parche temporal, no la solución: instalá un certificado local confiable con mkcert ' +
-      '(ver "TLS local con mkcert" en el README) y sacá esta variable de tu .env.',
+    'Esto es un parche temporal, no la solución: instalá un certificado local confiable con mkcert ' +
+    '(ver "TLS local con mkcert" en el README) y sacá esta variable de tu .env.',
   );
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }
@@ -78,7 +83,7 @@ function getBaseUrl(): string {
   if (!base || !tenant) {
     throw new Error(
       '[api.ts] Faltan STAMLESS_API_URL y/o STAMLESS_TENANT_SLUG en el entorno de build. ' +
-        'Copiá .env.example a .env y completá los valores.',
+      'Copiá .env.example a .env y completá los valores.',
     );
   }
 
@@ -93,7 +98,7 @@ function getBuildToken(): string {
   if (!token) {
     throw new Error(
       '[api.ts] Falta STAMLESS_API_TOKEN en el entorno de build (ability content:read). ' +
-        'Generalo en Console -> Desarrolladores -> API Tokens.',
+      'Generalo en Console -> Desarrolladores -> API Tokens.',
     );
   }
 
@@ -281,6 +286,43 @@ export async function getAllPosts(): Promise<PostSummary[]> {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const { data, meta } = await getPosts({ per_page: perPage });
+    all.push(...data);
+
+    if (!meta || page >= meta.last_page) break;
+    page += 1;
+  }
+
+  return all;
+}
+
+// ---------------------------------------------------------------------------
+// Services
+// ---------------------------------------------------------------------------
+// 2026-09-02 (ver ADR-044) — primer endpoint público del módulo de
+// Servicios, mismo patrón que Posts (paginado + `getAllServices()` para
+// `getStaticPaths` del detalle).
+
+export interface ListServicesParams {
+  per_page?: number;
+  [key: string]: string | number | boolean | undefined;
+}
+
+export function getServices(params: ListServicesParams = {}): Promise<Paginated<ServiceSummary>> {
+  return requestPaginated<ServiceSummary>(`/services${qs(params)}`);
+}
+
+export function getService(slug: string): Promise<Service> {
+  return requestApi<Service>(`/services/${encodeURIComponent(slug)}`);
+}
+
+export async function getAllServices(): Promise<ServiceSummary[]> {
+  const perPage = 50;
+  let page = 1;
+  const all: ServiceSummary[] = [];
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { data, meta } = await getServices({ per_page: perPage });
     all.push(...data);
 
     if (!meta || page >= meta.last_page) break;

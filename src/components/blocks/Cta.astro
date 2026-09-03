@@ -1,34 +1,217 @@
 ---
-/** Stub funcional — presentacional puro, sin JS. */
-import type { Block } from '../../lib/types';
+/**
+ * Llamado a la Acción (`cta`) — reescrito por completo 2026-09-01 a pedido
+ * del Tech Lead (con captura de referencia: franja `cicaindigo` sólida,
+ * título+subtítulo centrados en blanco, un solo botón dorado en pill con
+ * ícono de avión de papel), cruzando puntualmente el límite
+ * Claude=datos/Antigravity=visual descrito en CLAUDE.md (mismo criterio ya
+ * usado en Hero.astro/Header.astro/RichText.astro). Antes era un stub
+ * presentacional sin terminar (fondo gris fijo, sin properties reales, un
+ * `Repeater` completo de `links` para lo que en la práctica siempre fue un
+ * solo botón).
+ *
+ * Estándar nuevo confirmado por el Tech Lead, pensado para reusarse en
+ * bloques de sección completa futuros: la `<section>` SIEMPRE es fullwidth
+ * — el fondo (color y/o imagen) llega borde a borde del viewport sin
+ * excepción. Lo que `properties.content_width` condiciona es solo el
+ * CONTENEDOR interno (título/subtítulo/botón), igual que ya hacían
+ * `split`/`rich_text`/`logos`.
+ *
+ * Fondo en capas apilables (no excluyentes entre sí), de atrás para
+ * adelante:
+ *   1. `properties.background_color` — capa base, tapa toda la sección.
+ *   2. `content.background_image` (opcional) — capa INTERMEDIA superpuesta
+ *      ENCIMA del color (no lo reemplaza), con blend mode + los 6 filtros
+ *      CSS clásicos + opacidad propia (`properties.media_*`, mismo set
+ *      genérico que `split`/`heading` — `mediaEffectStyle()` abajo, mismo
+ *      patrón que `Split.astro`/`Hero.astro`).
+ *   3. `properties.overlay_opacity` (opcional) — velo NEGRO encima de la
+ *      imagen, debajo del texto, para legibilidad — independiente de los
+ *      filtros/blend de la imagen en sí. Esta property ya existía en
+ *      `PropertiesSchema` (genesis) pero no tenía ningún consumidor real en
+ *      ningún bloque hasta este cambio.
+ *   4. Contenido (título/subtítulo/botón), siempre arriba de todo (`z-10`).
+ *
+ * `content.body` (Textarea suelto que tenía el stub anterior) se elimina —
+ * redundante con `subtitle` (`HeadingFieldset`), y el mockup del Tech Lead
+ * no muestra una tercera línea de texto.
+ *
+ * `show_link`/`links[0]` — mismo patrón "gate explícito" que
+ * `rich_text`/`testimonials`: un solo botón opcional, nunca un Repeater.
+ */
+import type { Block, BlendMode, ContentLink, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
+import { Icon } from 'astro-icon/components';
 
 interface Props {
   block: Block;
 }
 
 const { block } = Astro.props;
-const content = block.content as { body?: string };
+
+const content = block.content as { background_image?: Media | null };
+
+interface CtaProperties extends BackgroundColorProperties {
+  text_color?: string | null;
+  content_width?: 'full' | 'boxed' | 'narrow';
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Velo negro sobre la imagen de fondo (debajo del texto), 0-100. Independiente de `media_opacity` (que es la opacidad de la imagen en sí). */
+  overlay_opacity?: number | null;
+  media_blend_mode?: BlendMode | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  show_link?: boolean;
+  link_radius?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  link_size?: 'sm' | 'md' | 'lg';
+}
+
+const properties = (block.properties as CtaProperties) ?? {};
+const link: ContentLink | undefined = block.links?.[0];
+const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean(link?.label);
+
+// 2026-09-02, pedido del Tech Lead: `background_type` pasa a ser
+// requerido y gana una 3ª opción "Imagen" — color/degradado e imagen son
+// ahora EXCLUYENTES en Studio (antes convivían en capas). El frontend no
+// necesita lógica de exclusividad propia: cuando el tipo es "Imagen",
+// Filament oculta `background_color` (queda `null`/sin persistir), así que
+// `resolveBackgroundStyle()` no devuelve nada y solo se ve la capa de
+// imagen de abajo; con "Sólido"/"Degradado" no hay imagen cargada. Mismo
+// helper que ya usan `Colophon.astro`/`FooterBottom.astro` — antes este
+// bloque ignoraba `background_type`/gradiente por completo.
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : '']
+  .join(' ')
+  .trim();
+
+const PADDING_Y_CLASSES: Record<NonNullable<CtaProperties['padding_y']>, string> = {
+  sm: 'py-10 3md:py-14',
+  md: 'py-14 3md:py-20',
+  // 80px (py-20) es el estándar del design system para el padding vertical
+  // de sección a partir de `lg` (1080px) — valor tomado del dev-mode de
+  // Figma. Por debajo de `lg` se achica de forma responsive (48px base).
+  lg: 'py-12 lg:py-20',
+  xl: 'py-20 3md:py-32',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+/**
+ * `content_width` — mismo estándar que `split`/`rich_text`/`logos` (ver
+ * docblock arriba): la sección siempre es fullwidth, esto es solo el
+ * contenedor interno. `full` acá NO es bleed a `px-0` (no hay nada que
+ * sangrar al borde — es texto+botón centrados, no una imagen) sino el
+ * mismo criterio que ya usa `RichText.astro`/`Logos.astro` para su
+ * variante `full`: sin cap de ancho, con padding horizontal responsive.
+ * Default `boxed` (cae acá cuando la property no está seteada) — mismo
+ * criterio que `split`/`rich_text`, a diferencia de `logos` (que sí pidió
+ * default fullwidth explícito).
+ */
+const CONTENT_WIDTH_CLASSES: Record<NonNullable<CtaProperties['content_width']>, string> = {
+  boxed: 'max-w-3xl px-4 sm:px-6 lg:px-8',
+  narrow: 'max-w-2xl px-4 sm:px-6 lg:px-8',
+  full: 'max-w-none px-6 3md:px-[80px]',
+};
+const contentWidthClass = CONTENT_WIDTH_CLASSES[properties.content_width ?? 'boxed'];
+
+/**
+ * Filtros/efectos de la imagen de fondo (`media_*`), mismo patrón que
+ * `mediaEffectStyle()` de `Split.astro`/`backgroundEffectStyle()` de
+ * `Hero.astro`: un solo `style` combinando `filter` (los 6 filtros CSS
+ * aplicables), `opacity` y `mix-blend-mode`.
+ */
+function backgroundImageEffectStyle(props: CtaProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
+
+/**
+ * Mismo set de 4 estilos de botón + escalas de radio/tamaño que
+ * `RichText.astro`/`Split.astro` — para que un botón se vea igual sin
+ * importar en qué bloque aparezca. Default acá: `full` (pill) — a
+ * diferencia de `rich_text` (default `lg`), el mockup de este bloque
+ * específico usa un botón completamente redondeado; se resuelve como
+ * default explícito de ESTE componente, no cambiando el default
+ * compartido de `PropertiesSchema` (que seguiría afectando a otros
+ * bloques que reusan el mismo campo).
+ */
+const LINK_STYLE_CLASSES: Record<string, string> = {
+  primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
+  outline: 'border-current bg-transparent hover:bg-white/10',
+  text: 'border-transparent bg-transparent underline-offset-4 hover:underline',
+};
+const LINK_RADIUS_CLASSES: Record<NonNullable<CtaProperties['link_radius']>, string> = {
+  xs: 'rounded-xs',
+  sm: 'rounded-sm',
+  md: 'rounded-md',
+  lg: 'rounded-lg',
+  xl: 'rounded-xl',
+  full: 'rounded-full',
+};
+const LINK_SIZE_CLASSES: Record<NonNullable<CtaProperties['link_size']>, { button: string; icon: number }> = {
+  sm: { button: 'h-10 gap-2 px-5 text-xs', icon: 16 },
+  md: { button: 'h-12 gap-2 px-7 text-sm', icon: 18 },
+  lg: { button: 'h-14 gap-2.5 px-9 text-sm', icon: 20 },
+};
+const linkStyleClass = LINK_STYLE_CLASSES[link?.type ?? 'primary'] ?? LINK_STYLE_CLASSES.primary;
+// `lg` (rounded-lg, moderado — no pill), mismo default que RichText.astro
+// (2026-08-31, feedback del Tech Lead: "no es rounded-full la expectativa").
+const linkRadiusClass = LINK_RADIUS_CLASSES[properties.link_radius ?? 'lg'];
+const linkSize = LINK_SIZE_CLASSES[properties.link_size ?? 'lg'];
 ---
 
-<section class="bg-gray-50 px-4 py-16 text-center">
-  <div class="mx-auto max-w-2xl">
-    {block.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{block.pretitle}</p>}
-    {block.title && <h2 class="text-3xl font-bold">{block.title}</h2>}
-    {block.subtitle && <p class="mt-2 text-lg text-gray-600">{block.subtitle}</p>}
-    {content.body && <p class="mt-4 text-gray-700">{content.body}</p>}
+<section class="relative w-full overflow-hidden" style={sectionStyle || undefined}>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
 
-    <div class="mt-6 flex justify-center gap-4">
-      {
-        block.links.map((link) => (
-          <a
-            href={link.href ?? '#'}
-            target={link.target}
-            class={link.type === 'primary' ? 'rounded bg-gray-900 px-6 py-3 font-medium text-white' : 'rounded border border-gray-300 px-6 py-3 font-medium'}
-          >
-            {link.label}
-          </a>
-        ))
-      }
-    </div>
+  <div class={`relative z-10 mx-auto flex w-full flex-col items-center gap-2 text-center ${contentWidthClass} ${paddingYClass}`}>
+    {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
+    {block.title && <h2 class="w-full text-3xl font-bold italic sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]">{block.title}</h2>}
+    {/* No es un "subtítulo": es la descripción breve del CTA (1 línea bajo
+      el título). Bajado de 24px a 22px (2026-09-01, ajuste del Tech Lead:
+      "no encaja") — line-height se mantiene en 32px (leading-8) con el
+      tamaño de fuente en un valor arbitrario ya que 22px no es un paso de
+      la escala estándar de Tailwind. Sigue viviendo en `block.subtitle`
+      (mismo campo genérico de siempre), pero el admin ya la relabela como
+      "Descripción breve" (ver HeadingFieldset::make() en el bloque `cta`
+      de PageResource.php). */}
+    {block.subtitle && <p class="w-full text-[22px] leading-8 font-light opacity-90">{block.subtitle}</p>}
+
+    {
+      showLink && link && (
+        <a
+          href={link.href ?? '#'}
+          target={link.target}
+          rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+          class={`mt-4 inline-flex items-center justify-center border font-bold tracking-[0.1em] uppercase shadow-lg transition ${linkSize.button} ${linkRadiusClass} ${linkStyleClass}`}
+        >
+          {link.label}
+          <Icon name="ph:paper-plane-tilt" size={linkSize.icon} aria-hidden="true" />
+        </a>
+      )
+    }
   </div>
 </section>

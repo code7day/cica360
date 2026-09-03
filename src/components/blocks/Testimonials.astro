@@ -87,7 +87,10 @@ const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean
 const PADDING_Y_CLASSES: Record<NonNullable<TestimonialsProperties['padding_y']>, string> = {
   sm: 'py-10 3md:py-14',
   md: 'py-14 3md:py-20',
-  lg: 'py-16 3md:py-24',
+  // 80px (py-20) es el estándar del design system para el padding vertical
+  // de sección a partir de `lg` (1080px) — valor tomado del dev-mode de
+  // Figma. Por debajo de `lg` se achica de forma responsive (48px base).
+  lg: 'py-12 lg:py-20',
   xl: 'py-20 3md:py-32',
 };
 
@@ -146,10 +149,50 @@ function shortName(name?: string): string {
 }
 
 // Máximo de columnas en desktop (ver `sm:grid-cols-2 lg:grid-cols-3` más
-// abajo). Con más testimonios que esto, no entran todos en una sola fila
-// → carousel en vez de grilla estática.
+// abajo — 1 columna por default/<540px, 2 desde `sm`/540px, 3 desde
+// `lg`/1080px; spec final del Tech Lead 2026-09-02, "mejor considerar:
+// menor a 539px deberia ser de 1 en 1, apartir de 540px (sm) deberian de 2
+// en 2 y de 1080px (lg) a más 3 en 3 y todo horizontal" — reemplaza un
+// intento previo el mismo día que saltaba directo de 1 a 3 en `3md`/960px
+// sin paso intermedio). Con más testimonios que esto, no entran todos en
+// una sola fila → carousel en vez de grilla estática.
 const MAX_GRID_ITEMS = 3;
 const useCarousel = items.length > MAX_GRID_ITEMS;
+
+/**
+ * Carousel por PÁGINA, con `itemsPorVista` MEDIDO en runtime — no fijo en
+ * build time (2026-09-02, 3ra vuelta, mismo día). Historial de los 2
+ * intentos previos que este reemplaza:
+ * - 2026-09-01: páginas fijas de `MAX_GRID_ITEMS` (3) armadas en build
+ *   time con ventana circular (`items[(p*3+i) % items.length]`), cada
+ *   "slide" del track era un `<div>` con su propio grid interno de hasta 3
+ *   tarjetas (`testimonialPages`, ya no existe).
+ * - 2026-09-02, corrección: se conectó ese diseño al markup (antes solo
+ *   estaba documentado, el JSX seguía usando `items.map()` por testimonio).
+ * - 2026-09-02, pedido del Tech Lead sobre una captura en ~978px de ancho
+ *   ("pero esta mal, te pedi un item de 1 en 1, de 2 en 2 y 3 en 3 items,
+ *   se ve muy mal por columnas"): con una página FIJA de 3 tarjetas
+ *   dentro de un grid `sm:grid-cols-2 lg:grid-cols-3`, en el rango 540–
+ *   1079px (2 columnas) la 3ra tarjeta de cada página quedaba sola en una
+ *   fila nueva, con la mitad del ancho vacía — "por columnas" en vez de
+ *   "por vista". El tamaño de página tiene que IGUALAR la cantidad de
+ *   columnas activa (1/2/3), no quedar fijo en 3.
+ *
+ * Mismo patrón ya resuelto para `Logos.astro` el mismo día (ver ese
+ * archivo para el detalle completo): el track deja de ser páginas
+ * pre-armadas y pasa a ser scroll nativo ITEM POR ITEM, con cada tarjeta
+ * midiendo su ancho vía `basis-*` responsive (ver `sm:basis-[calc(50%-
+ * 1rem)] lg:basis-[calc(33.333%-1.334rem)]` más abajo, mismo breakpoint que
+ * el grid estático de arriba). El script mide en runtime cuántas tarjetas
+ * entran a la vez (`itemsPerView`) comparando el ancho real de la primera
+ * tarjeta contra el ancho del track, arma `Math.ceil(items.length /
+ * itemsPerView)` páginas/dots, y clona las primeras tarjetas al final del
+ * track (ocultas, `aria-hidden`) para que la última página, si queda
+ * incompleta, se autocomplete con testimonios reales del principio en vez
+ * de dejar un hueco — nunca una tarjeta sola en una fila con espacio de
+ * sobra. Con 5 testimonios: 1 visible (mobile) → 5 páginas; 2 visibles
+ * (540–1079px) → 3 páginas; 3 visibles (1080px+) → 2 páginas.
+ */
 ---
 
 <section class="w-full" style={sectionStyle || undefined}>
@@ -158,7 +201,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       (block.pretitle || block.title || block.subtitle) && (
         <div class="flex w-full flex-col items-center gap-1 text-center">
           {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
-          {block.title && <h2 class="w-full text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl">{block.title}</h2>}
+          {block.title && <h2 class="w-full text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]">{block.title}</h2>}
           {block.subtitle && <p class="w-full text-lg font-light opacity-90 md:text-base">{block.subtitle}</p>}
         </div>
       )
@@ -166,7 +209,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
 
     {
       items.length > 0 && !useCarousel && (
-        <div class="grid w-full gap-8 md:grid-cols-2 2lg:grid-cols-3">
+        <div class="grid w-full gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((item) => (
             <blockquote class="testimonial-card flex flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 2lg:p-6 xl:p-10" style={cardStyle || undefined}>
               {item.avatar?.url ? (
@@ -201,7 +244,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
           >
             {items.map((item) => (
               <blockquote
-                class="testimonial-card flex shrink-0 basis-full snap-center flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 md:basis-[calc(50%-1rem)] 2lg:basis-[calc(33.333%-1.334rem)] 2lg:p-6 xl:p-10"
+                class="testimonial-card flex shrink-0 basis-full snap-center flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:basis-[calc(50%-1rem)] sm:p-10 lg:basis-[calc(33.333%-1.334rem)] 2lg:p-6 xl:p-10"
                 style={cardStyle || undefined}
                 data-testimonials-item
               >
@@ -226,19 +269,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
             ))}
           </div>
 
-          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Testimonios">
-            {items.map((_, index) => (
-              <button
-                type="button"
-                class="data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-white/50 transition-all data-[active=true]:w-6"
-                data-testimonials-dot
-                data-index={index}
-                aria-label={`Ir al testimonio ${index + 1}`}
-                aria-selected={index === 0 ? 'true' : 'false'}
-                role="tab"
-              />
-            ))}
-          </div>
+          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Casos de éxito" data-testimonials-dots />
         </div>
       )
     }
@@ -308,22 +339,24 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
 </style>
 
 <script>
-  // Carousel vainilla JS de testimonios — mismo patrón que
-  // `Hero.astro` (`initHeroSliders`): auto-avance por `setInterval`,
-  // pausa en hover/foco/touch, respeta `prefers-reduced-motion`.
+  // Carousel de testimonios, por PÁGINA con `itemsPerView` medido en
+  // runtime (2026-09-02, 3ra vuelta — ver docblock del frontmatter para el
+  // historial completo de los 2 intentos previos que esto reemplaza).
+  // Mismo patrón vainilla ya resuelto para `Logos.astro` el mismo día
+  // (ver ese archivo para el detalle línea por línea): drag con Pointer
+  // Events (mouse+touch+pen), auto-avance con pausa en interacción,
+  // respeta `prefers-reduced-motion`, `itemsPerView` medido comparando el
+  // ancho real de la primera tarjeta contra el ancho del track (cambia
+  // por breakpoint: 1/<540px, 2/540–1079px, 3/1080px+), dots reconstruidos
+  // en runtime (`Math.ceil(items.length / itemsPerView)`, no uno por
+  // testimonio), y wraparound de la última página incompleta clonando las
+  // primeras tarjetas al final del track (ocultas, `aria-hidden`,
+  // scrolleables) en vez de dejar un hueco.
   //
-  // 2026-08-31 (pedido del Tech Lead — "falta cambiar siguiente/anterior
-  // con touch o drag and drop"): el scroll-snap nativo del navegador daba
-  // swipe táctil "gratis" en teléfonos reales, pero NO daba drag con
-  // mouse en desktop (un `overflow-x-auto` no se arrastra con el mouse
-  // por defecto). Se agregó un drag handler propio con Pointer Events
-  // (`pointerdown`/`pointermove`/`pointerup`/`pointercancel`) que unifica
-  // mouse+touch+pen en la misma API — reemplaza al scroll-snap nativo
-  // como mecanismo de swipe/drag (CSS `touch-action: pan-y` le dice al
-  // navegador que no paneé horizontal por su cuenta, así no compiten), y
-  // al soltar hace snap suave al testimonio más cercano según cuánto se
-  // arrastró. Los puntos de navegación se sincronizan con la posición
-  // activa real (drag, auto-avance o click en un dot).
+  // Diferencia real con `Logos.astro`: acá no hay flechas prev/next (nunca
+  // las tuvo este bloque, solo dots + drag + auto-avance), y el intervalo
+  // de auto-avance es más largo (5s, ya establecido desde 2026-08-31 —
+  // tiene sentido leer un testimonio completo antes de que cambie).
   function initTestimonialsCarousels() {
     const roots = document.querySelectorAll('[data-testimonials-carousel]');
 
@@ -332,10 +365,33 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       root.dataset.testimonialsInitialized = 'true';
 
       const track = root.querySelector('[data-testimonials-track]');
-      const items = Array.from(root.querySelectorAll('[data-testimonials-item]'));
-      const dots = Array.from(root.querySelectorAll('[data-testimonials-dot]'));
+      const realItems = Array.from(root.querySelectorAll('[data-testimonials-item]'));
+      const dotsContainer = root.querySelector('[data-testimonials-dots]');
 
-      if (!(track instanceof HTMLElement) || items.length <= 1) return;
+      if (!(track instanceof HTMLElement) || realItems.length <= 1) return;
+
+      // Máximo de tarjetas visibles a la vez según la spec del bloque (1
+      // mobile / 2 `sm` / 3 `lg`, ver docblock del frontmatter) — tope de
+      // cuántos testimonios hace falta clonar para que cualquier página,
+      // en cualquier breakpoint, se autocomplete con testimonios reales
+      // del principio (no clones de clones).
+      const MAX_ITEMS_PER_VIEW_SPEC = 3;
+      const cloneCount = Math.min(realItems.length, MAX_ITEMS_PER_VIEW_SPEC);
+      const clones: HTMLElement[] = [];
+      for (let i = 0; i < cloneCount; i++) {
+        const clone = realItems[i].cloneNode(true) as HTMLElement;
+        clone.removeAttribute('data-testimonials-item');
+        clone.dataset.testimonialsClone = 'true';
+        clone.setAttribute('aria-hidden', 'true');
+        clone.setAttribute('tabindex', '-1');
+        track.appendChild(clone);
+        clones.push(clone);
+      }
+      // `allItems` direcciona posiciones de scroll (reales + clones al
+      // final) — una página `p` empieza en el testimonio real `p *
+      // itemsPerView`, que puede caer dentro de los clones cuando la
+      // última página real queda incompleta (eso es el wraparound).
+      const allItems = [...realItems, ...clones];
 
       const intervalMs = 5000;
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -343,19 +399,27 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       let current = 0;
       let timer: number | undefined;
       let resumeTimer: number | undefined;
+      let isOverflowing = false;
+      // Cuántos testimonios entran a la vez en el viewport actual —
+      // medido en `updateOverflow()`, cambia por breakpoint.
+      let itemsPerView = 1;
+      // Cantidad de páginas = techo(testimonios reales / itemsPerView).
+      let totalPages = 1;
+      let dots: Element[] = [];
 
-      function scrollToIndex(index: number) {
-        const next = ((index % items.length) + items.length) % items.length;
-        const target = items[next] as HTMLElement;
+      function scrollToIndex(page: number) {
+        const next = ((page % totalPages) + totalPages) % totalPages;
+        const itemIndex = Math.min(next * itemsPerView, allItems.length - 1);
+        const target = allItems[itemIndex] as HTMLElement;
         track!.scrollTo({ left: target.offsetLeft - (track as HTMLElement).offsetLeft, behavior: 'smooth' });
         setActive(next);
       }
 
-      function setActive(index: number) {
-        current = index;
+      function setActive(page: number) {
+        current = page;
         dots.forEach((dot, dotIndex) => {
-          dot.setAttribute('data-active', dotIndex === index ? 'true' : 'false');
-          dot.setAttribute('aria-selected', dotIndex === index ? 'true' : 'false');
+          dot.setAttribute('data-active', dotIndex === page ? 'true' : 'false');
+          dot.setAttribute('aria-selected', dotIndex === page ? 'true' : 'false');
         });
       }
 
@@ -365,7 +429,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       }
 
       function start() {
-        if (prefersReducedMotion) return;
+        if (prefersReducedMotion || !isOverflowing) return;
         stop();
         timer = window.setInterval(() => scrollToIndex(current + 1), intervalMs);
       }
@@ -380,23 +444,100 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
         resumeTimer = window.setTimeout(start, 2500);
       }
 
-      /** Testimonio cuyo borde izquierdo está más cerca del scroll actual. */
-      function nearestIndex(): number {
+      /** Busca la página cuyo item inicial está más cerca del scroll actual (0..totalPages-1). */
+      function nearestPage(): number {
         const trackEl = track as HTMLElement;
         const targetLeft = trackEl.scrollLeft + trackEl.offsetLeft;
 
         let closest = 0;
         let closestDistance = Infinity;
 
-        items.forEach((item, index) => {
-          const distance = Math.abs((item as HTMLElement).offsetLeft - targetLeft);
+        for (let page = 0; page < totalPages; page++) {
+          const itemIndex = Math.min(page * itemsPerView, allItems.length - 1);
+          const distance = Math.abs((allItems[itemIndex] as HTMLElement).offsetLeft - targetLeft);
           if (distance < closestDistance) {
             closestDistance = distance;
-            closest = index;
+            closest = page;
           }
-        });
+        }
 
         return closest;
+      }
+
+      /**
+       * Mide cuántos testimonios REALES entran a la vez en el ancho
+       * actual del track: ancho real de la primera tarjeta (todas miden
+       * lo mismo dentro de un breakpoint, mismo `basis-*`) + el gap real
+       * leído del CSS computado.
+       */
+      function measureItemsPerView(): number {
+        const trackEl = track as HTMLElement;
+        const firstItem = realItems[0] as HTMLElement;
+        const itemWidth = firstItem.getBoundingClientRect().width;
+        if (itemWidth <= 0) return 1;
+
+        const trackStyle = window.getComputedStyle(trackEl);
+        const gapPx = Number.parseFloat(trackStyle.columnGap || trackStyle.gap || '32') || 32;
+
+        const measured = Math.round((trackEl.clientWidth + gapPx) / (itemWidth + gapPx));
+        return Math.max(1, measured);
+      }
+
+      /** Reconstruye los puntos del DOM para que haya exactamente `count` — uno por PÁGINA, no por testimonio. */
+      function buildDots(count: number) {
+        if (!(dotsContainer instanceof HTMLElement)) return;
+
+        dotsContainer.innerHTML = '';
+        const built: HTMLButtonElement[] = [];
+
+        for (let page = 0; page < count; page++) {
+          const dot = document.createElement('button');
+          dot.type = 'button';
+          dot.className =
+            'data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-white/50 transition-all data-[active=true]:w-6';
+          dot.dataset.index = String(page);
+          dot.setAttribute('role', 'tab');
+          dot.setAttribute('aria-label', `Ir a la página ${page + 1} de casos de éxito`);
+          dot.setAttribute('aria-selected', page === 0 ? 'true' : 'false');
+          dot.addEventListener('click', () => {
+            scrollToIndex(page);
+            pauseThenResume();
+          });
+          dotsContainer.appendChild(dot);
+          built.push(dot);
+        }
+
+        dots = built;
+      }
+
+      // Recalculado en cada resize: el breakpoint activo cambia cuántos
+      // testimonios entran a la vez, así que tanto si "desborda" (hace
+      // falta scroll) como la cantidad real de páginas pueden cambiar.
+      function updateOverflow() {
+        itemsPerView = measureItemsPerView();
+
+        const nextTotalPages = Math.max(1, Math.ceil(realItems.length / itemsPerView));
+        isOverflowing = nextTotalPages > 1;
+
+        // Los clones solo deben ocupar ancho en el track cuando
+        // realmente hacen falta para completar una última página
+        // incompleta.
+        clones.forEach((clone) => {
+          clone.style.display = isOverflowing ? '' : 'none';
+        });
+
+        if (nextTotalPages !== totalPages || dots.length !== nextTotalPages) {
+          totalPages = nextTotalPages;
+          buildDots(totalPages);
+        }
+
+        if (isOverflowing) {
+          setActive(nearestPage());
+          start();
+        } else {
+          stop();
+          if (resumeTimer) window.clearTimeout(resumeTimer);
+        }
       }
 
       // Drag con Pointer Events (mouse + touch + pen, misma API) — ver
@@ -404,14 +545,15 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       // arrastra, `scrollLeft` se mueve 1:1 con el puntero (asignación
       // directa, instantánea — `scroll-behavior: smooth` de Tailwind NO
       // aplica a esto, solo a llamadas a `scrollTo()`); al soltar, se
-      // suelta el drag y se hace un `scrollToIndex()` (ese sí animado) al
-      // testimonio más cercano.
+      // suelta el drag y se hace un `scrollToIndex()` (ese sí animado) a
+      // la página más cercana.
       let isDragging = false;
       let dragPointerId: number | undefined;
       let dragStartX = 0;
       let dragStartScrollLeft = 0;
 
       function onPointerDown(event: PointerEvent) {
+        if (!isOverflowing) return;
         isDragging = true;
         dragPointerId = event.pointerId;
         dragStartX = event.clientX;
@@ -430,7 +572,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
         if (!isDragging || event.pointerId !== dragPointerId) return;
         isDragging = false;
         (track as HTMLElement).classList.remove('is-dragging');
-        scrollToIndex(nearestIndex());
+        scrollToIndex(nearestPage());
         pauseThenResume();
       }
 
@@ -444,16 +586,13 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       root.addEventListener('focusin', stop);
       root.addEventListener('focusout', start);
 
-      dots.forEach((dot) => {
-        dot.addEventListener('click', () => {
-          const index = Number.parseInt(dot.getAttribute('data-index') ?? '0', 10);
-          scrollToIndex(index);
-          pauseThenResume();
-        });
+      let resizeTimer: number | undefined;
+      window.addEventListener('resize', () => {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(updateOverflow, 150);
       });
 
-      setActive(0);
-      start();
+      updateOverflow();
     });
   }
 

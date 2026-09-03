@@ -37,6 +37,17 @@ interface SplitContent {
 
 interface SplitProperties {
   background_color?: string | null;
+  /**
+   * Color de fondo SOLO de la columna de texto (2026-09-01, pedido del
+   * Tech Lead con captura de referencia: "la zona de texto tiene color de
+   * fondo" — el `background_color` de arriba tapa TODA la sección
+   * (imagen incluida), esto es un fondo aparte, acotado a la columna de
+   * texto). Cuando está seteado, la columna de texto se estira a la
+   * altura completa de la imagen (en vez de centrarse por su propio alto)
+   * y gana padding en las 4 direcciones — ver `hasTextBackground` más
+   * abajo.
+   */
+  text_background_color?: string | null;
   text_color?: string | null;
   padding_y?: 'sm' | 'md' | 'lg' | 'xl';
   /**
@@ -91,7 +102,11 @@ const mediaOnRight = content.media_position === 'right';
 const PADDING_Y_CLASSES: Record<NonNullable<SplitProperties['padding_y']>, string> = {
   sm: 'py-8 3md:py-10',
   md: 'py-0 3md:py-0',
-  lg: 'py-16 3md:py-24',
+  // 80px (py-20) es el estándar del design system para el padding vertical
+  // de sección a partir de `lg` (1080px) — valor tomado del dev-mode de
+  // Figma. Por debajo de `lg` se achica de forma responsive (48px base),
+  // sin otro breakpoint que lo vuelva a subir de ahí en adelante.
+  lg: 'py-12 lg:py-20',
   xl: 'py-20 3md:py-32',
 };
 const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'md'];
@@ -123,6 +138,21 @@ const textEdgePaddingClass = isFullWidth
     : 'pl-12 py-10 md:py-0 pr-10 3md:pr-[80px]'
   : '';
 
+// Con `text_background_color` seteado, la columna de texto deja de
+// centrarse por su propio alto (`items-center` del grid) y pasa a
+// estirarse a la altura completa de la fila (`items-stretch`, la imagen ya
+// tiene `h-full w-full object-cover` así que llena esa altura sola) — así
+// el color de fondo cubre el mismo alto que la imagen, como en la captura
+// de referencia. Adentro, `justify-center` mantiene el texto centrado
+// verticalmente dentro de esa columna ahora más alta. El padding pasa a
+// ser simétrico en las 4 direcciones (reemplaza `textEdgePaddingClass`,
+// que solo cubría el borde exterior en modo `full`) para que el color
+// respire alrededor del texto sin importar `content_width`.
+const hasTextBackground = Boolean(properties.text_background_color);
+const textBackgroundStyle = hasTextBackground ? `background-color: ${properties.text_background_color};` : undefined;
+const textPaddingClass = hasTextBackground ? 'p-10 lg:p-20' : textEdgePaddingClass;
+const gridAlignClass = hasTextBackground ? 'items-stretch' : 'items-center';
+
 // Mismos 4 estilos de botón que RichText.astro (`link.type`), para que un
 // CTA se vea igual sin importar en qué bloque aparezca.
 const LINK_STYLE_CLASSES: Record<string, string> = {
@@ -149,7 +179,10 @@ const LINK_STYLE_CLASSES: Record<string, string> = {
 // estaba en desktop" de golpe. Se bajó un escalón: `3md` ya no repite el
 // tamaño original, asienta en uno intermedio (no vuelve a crecer más
 // arriba de `3md`, no hay otro breakpoint que lo suba de nuevo).
-const TITLE_RESPONSIVE_CLASS = 'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl';
+// A partir de 1440px (`2xl`) el Tech Lead pidió alinear al valor exacto del
+// dev-mode de Figma (36px), y subir un poco más pasado 1700px (`5xl`, 40px).
+const TITLE_RESPONSIVE_CLASS =
+  'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]';
 // Subtítulo: mismo criterio — desde `md` en adelante queda en `text-base`
 // ("medio"), ya no vuelve a `text-lg` en `3md` (antes sí).
 const SUBTITLE_RESPONSIVE_CLASS = 'text-lg font-light text-gray-500 md:text-base';
@@ -228,10 +261,11 @@ const mediaStyle = mediaEffectStyle(properties);
       cap que usan Header/Hero para su fila interna en `boxed`, ver
       comentario en Header.astro). `full`: sin cap ni padding acá — la
       imagen bleedea hasta el borde del viewport, el texto lleva su propio
-      padding asimétrico (`textEdgePaddingClass`, ver frontmatter). */
+      padding (asimétrico sin fondo, simétrico si `text_background_color`
+      está seteado — ver `textPaddingClass` en el frontmatter). */
   }
   <div class={`mx-auto w-full ${containerWidthClass} ${paddingYClass}`}>
-    <div class="grid items-center gap-0 md:grid-cols-2 md:gap-0">
+    <div class={`grid gap-0 md:grid-cols-2 md:gap-0 ${gridAlignClass}`}>
       {
         content.media?.url && (
           <div class={mediaOnRight ? 'md:order-2' : undefined}>
@@ -246,7 +280,10 @@ const mediaStyle = mediaEffectStyle(properties);
         )
       }
 
-      <div class={`flex flex-col gap-4 ${mediaOnRight ? 'md:order-1' : ''} ${textEdgePaddingClass}`}>
+      <div
+        class={`flex flex-col justify-center gap-4 ${mediaOnRight ? 'md:order-1' : ''} ${textPaddingClass}`}
+        style={textBackgroundStyle}
+      >
         {block.pretitle && <p class="text-cicagold-600 text-sm font-light tracking-[0.2em] uppercase">{block.pretitle}</p>}
         {block.title && <h2 class={`text-cicaindigo-500 ${TITLE_RESPONSIVE_CLASS}`}>{block.title}</h2>}
         {block.subtitle && <p class={SUBTITLE_RESPONSIVE_CLASS}>{block.subtitle}</p>}

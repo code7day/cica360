@@ -20,6 +20,9 @@ import Split from './Split.astro';
 import Testimonials from './Testimonials.astro';
 import Logos from './Logos.astro';
 import ServicesGrid from './ServicesGrid.astro';
+import FooterBlock from './FooterBlock.astro';
+import Colophon from './Colophon.astro';
+import FooterBottom from './FooterBottom.astro';
 
 interface Props {
   block: Block;
@@ -46,6 +49,9 @@ const componentsByType: Record<string, any> = {
   testimonials: Testimonials,
   logos: Logos,
   services_grid: ServicesGrid,
+  footer: FooterBlock,
+  colophon: Colophon,
+  footer_bottom: FooterBottom,
 };
 
 const Component = componentsByType[block.type];

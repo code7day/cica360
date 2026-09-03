@@ -4,12 +4,23 @@
  * Antigravity: este es el punto de partida para el layout real de
  * CICA360 (ver docs/context/TASK.md, Fase 2). Mantener:
  * - El <slot /> principal y los props de SEO (title/description).
- * - Que Header/Footer sigan recibiendo el menú ya resuelto (no agregar
- *   fetch propio acá — eso es responsabilidad de src/lib/api.ts).
+ * - Que Header siga recibiendo el menú ya resuelto (no agregar fetch
+ *   propio acá — eso es responsabilidad de src/lib/api.ts).
+ *
+ * 2026-09-02 (pedido del Tech Lead, ver genesis ADR-042): `<Footer
+ * menu={menu} />` (el footer hardcodeado — nav + copyright fijo) se
+ * QUITA de acá. El sitio venía mostrando 2 pies de página a la vez: este
+ * hardcodeado y el bloque `footer`/`colophon`/`footer_bottom` (Content
+ * tipo Footer, ADR-038/040/041) que ya vive en cada página — "quiero que
+ * nos quedemos con una de ellas". El componente `Footer.astro` NO se
+ * borra (podría reutilizarse), solo se deja de importar/renderizar acá.
+ * `menu` se mantiene: `Header` lo sigue necesitando para la navegación
+ * superior. Si el sitio necesita mostrar la navegación principal también
+ * en el pie, usar el bloque `footer_bottom` > "Mostrar menú" (seleccionar
+ * el menú "menu-principal") desde Studio — ya no es automático.
  */
 import '../styles/global.css';
 import Header from '../components/Header.astro';
-import Footer from '../components/Footer.astro';
 import { getMenu } from '../lib/api';
 
 interface Props {
@@ -56,10 +67,69 @@ const pageTitle = title === siteName ? title : `${title} — ${siteName}`;
       href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
     />
 
-    <!-- Antigravity: favicon/OG image reales pendientes -->
+    <!--
+      Favicon completo (2026-09-01, implementado por Claude a pedido
+      directo del Tech Lead — infraestructura de `<head>`, no estilo
+      visual de un bloque, así que no cruza el límite de
+      Claude=datos/Antigravity=visual del CLAUDE.md de este repo).
+      Archivos fuente en `sources/favicon/` (paquete generado con un
+      favicon generator estándar — set completo Apple/Android/MS/clásico).
+      Organización en `public/` (2026-09-01, reordenado a pedido del Tech
+      Lead — la primera versión tiraba los 24 PNG sueltos en la raíz de
+      `public/`, "así de sucio"): todo el paquete vive en
+      `public/favicon/`, EXCEPTO `favicon.ico`, que se deja en la raíz de
+      `public/` porque los navegadores lo buscan ahí por convención
+      (`/favicon.ico`) incluso sin ningún `<link>` — dejarlo afuera de la
+      subcarpeta es justamente lo que lo hace un respaldo de verdad.
+      `manifest.json` se movió también a `public/favicon/manifest.json` —
+      como el scope de un manifest por default es el directorio donde
+      vive el archivo (no la raíz del sitio), se le agregó `"scope": "/"`
+      explícito para que `start_url: "/"` siga siendo válido estando el
+      archivo fuera de la raíz. Lista de tags tomada del ejemplo que pasó
+      el Tech Lead, EXTENDIDA (no recortada):
+      - `favicon.ico` de respaldo (`rel="icon"` sin `sizes`, no estaba en
+        el ejemplo pero es el fallback clásico que entienden navegadores
+        viejos y algunos crawlers/lectores de RSS que ignoran el resto).
+      - `apple-icon-precomposed.png`/`apple-icon.png` (180×180, el
+        "catch-all" que iOS busca si no encuentra un tamaño exacto) NO se
+        linkean aparte — quedan sin usar a propósito (viven igual en
+        `public/favicon/` por si hacen falta más adelante), ya está
+        cubierto el 180×180 real (`apple-icon-180x180.png`) explícito en
+        la lista de `sizes`.
+      - `manifest.json`/`browserconfig.xml`: se les puso `name`/
+        `theme_color`/`TileColor` reales de CICA360 (antes decía "App"/
+        blanco genérico, defaults del generator) — `#2D2C4D` es
+        `cicaindigo-500`, el color DEFAULT de marca (ver `global.css`).
+      - `<meta name="msapplication-config">`: no estaba en el ejemplo del
+        Tech Lead, pero es lo que hace que Edge/IE legacy en Windows
+        encuentren `browserconfig.xml` explícitamente en vez de solo
+        auto-descubrirlo por convención de nombre en la raíz — se agrega
+        porque ya está el archivo, sin costo.
+    -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon/favicon-96x96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon/android-icon-192x192.png" />
+    <link rel="apple-touch-icon" sizes="57x57" href="/favicon/apple-icon-57x57.png" />
+    <link rel="apple-touch-icon" sizes="60x60" href="/favicon/apple-icon-60x60.png" />
+    <link rel="apple-touch-icon" sizes="72x72" href="/favicon/apple-icon-72x72.png" />
+    <link rel="apple-touch-icon" sizes="76x76" href="/favicon/apple-icon-76x76.png" />
+    <link rel="apple-touch-icon" sizes="114x114" href="/favicon/apple-icon-114x114.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/favicon/apple-icon-120x120.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/favicon/apple-icon-144x144.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/favicon/apple-icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-icon-180x180.png" />
+    <link rel="manifest" href="/favicon/manifest.json" />
+    <meta name="msapplication-TileColor" content="#2D2C4D" />
+    <meta name="msapplication-TileImage" content="/favicon/ms-icon-144x144.png" />
+    <meta name="msapplication-config" content="/favicon/browserconfig.xml" />
+    <meta name="theme-color" content="#2D2C4D" />
+
     <meta property="og:title" content={pageTitle} />
     {description && <meta property="og:description" content={description} />}
     <meta property="og:type" content="website" />
+    <!-- Antigravity: OG image real pendiente (og:image, twitter:card) — el favicon ya está resuelto arriba -->
 
     <!--
       A propósito, sin `<ClientRouter />` (ex `<ViewTransitions />`) acá:
@@ -76,6 +146,5 @@ const pageTitle = title === siteName ? title : `${title} — ${siteName}`;
     <main class="flex-1">
       <slot />
     </main>
-    <Footer menu={menu} />
   </body>
 </html>

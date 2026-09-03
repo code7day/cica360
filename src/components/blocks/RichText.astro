@@ -129,7 +129,10 @@ const INNER_CONTENT_WIDTH_CLASSES: Record<NonNullable<RichTextProperties['conten
 const PADDING_Y_CLASSES: Record<NonNullable<RichTextProperties['padding_y']>, string> = {
   sm: 'py-8 3md:py-10',
   md: 'py-0 3md:py-0',
-  lg: 'py-7 3md:py-10',
+  // 80px (py-20) es el estándar del design system para el padding vertical
+  // de sección a partir de `lg` (1080px) — valor tomado del dev-mode de
+  // Figma. Por debajo de `lg` se achica de forma responsive (48px base).
+  lg: 'py-12 lg:py-20',
   xl: 'py-20 3md:py-32',
 };
 
@@ -198,7 +201,10 @@ const LINK_SIZE_CLASSES: Record<NonNullable<RichTextProperties['link_size']>, { 
 // partir de `3md` volvía al MISMO tamaño que `sm:` (desktop), se veía muy
 // grande. Se bajó un escalón: `3md` ya no repite el tamaño original,
 // asienta en uno intermedio.
-const TITLE_RESPONSIVE_CLASS = 'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl';
+// A partir de 1440px (`2xl`) alineado al dev-mode de Figma (36px), y un
+// poco más grande pasado 1700px (`5xl`, 40px).
+const TITLE_RESPONSIVE_CLASS =
+  'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]';
 // Subtítulo: desde `md` en adelante queda en `text-base` ("medio"), ya no
 // vuelve a `text-lg` en `3md` (antes sí).
 const SUBTITLE_RESPONSIVE_CLASS = 'w-full text-lg font-light text-gray-500 md:text-base';

@@ -5,18 +5,36 @@
  * `Cliente0ContentSeeder` tenían `media_id: null`, y este componente
  * descartaba en silencio cualquier item sin `media.url`).
  *
- * Layout (pedido del Tech Lead, con captura de referencia): "franja de
- * marcas" — 7 columnas por página en desktop (`content.items` se agrupa en
- * páginas fijas de `ITEMS_PER_PAGE` = 7 acá, no un límite en la API: el
- * bloque sigue siendo un `Repeater` autocontenido en `content.items[]`,
- * mismo patrón que `features`/`services_grid`, no una tabla resuelta en
- * runtime como `testimonials`). Con 7 o menos items: grilla estática, sin
- * carousel. Con más de 7: carousel PAGINADO — cada "página" del carousel es
- * un grupo fijo de hasta 7 logos (no un scroll continuo item por item como
- * `Testimonials.astro`), con flechas prev/next (mismo ícono/patrón que
- * `Hero.astro`), puntos de página, auto-avance y drag/swipe con Pointer
- * Events (mismo mecanismo que se agregó a `Testimonials.astro` el mismo
- * día — mouse+touch+pen unificado).
+ * **Reescritura 2026-09-01 (pedido del Tech Lead, con la escala custom real
+ * de breakpoints del proyecto — `src/styles/global.css`, `@theme`):** antes
+ * el carousel agrupaba `content.items` en páginas FIJAS de 7 (grilla
+ * estática si había ≤7, carousel paginado si había más — ver historial en
+ * `PROGRESS.md`). Eso no tenía en cuenta que la cantidad de logos visibles
+ * a la vez DEBE variar según el viewport, no quedar fija en "7 en desktop,
+ * lo que sea que entre en mobile". Spec exacta del Tech Lead — cuántos
+ * logos se ven a la vez:
+ *   - Mobile (base):        1
+ *   - `sm`   (540px):       2
+ *   - `2md`  (810px):       3
+ *   - `3lg`  (1200px):      4
+ *   - `2xl`  (1440px):      6
+ *   - `5xl`  (1700px):      7
+ * Con una cantidad de "items por vista" que cambia por breakpoint, el
+ * modelo anterior de "página fija de N con relleno circular" ya no tiene
+ * sentido (¿página de cuántos?). Se reemplaza por scroll continuo ITEM POR
+ * ITEM (mismo patrón ya establecido en `Testimonials.astro`: scroll-snap
+ * nativo + drag por Pointer Events + auto-avance + un punto por item, con
+ * ventana circular en el JS, no en el armado de datos), con el ancho de
+ * cada logo resuelto en Tailwind vía `basis-[calc(...)]` por breakpoint
+ * (mismo cálculo que `Testimonials.astro`/`Split.astro`: `(100% -
+ * (N-1)*gap) / N`, gap = `gap-8` = 2rem). Ya no hay distinción "grilla
+ * estática vs. carousel" a nivel de build: SIEMPRE es el mismo track
+ * scrolleable — si en el viewport actual entran todos los logos sin
+ * overflow (ej. 3 logos reales en un breakpoint que muestra 7 a la vez),
+ * el JS lo detecta en runtime (`track.scrollWidth` vs. `clientWidth`,
+ * recalculado en cada resize porque el breakpoint activo cambia cuántos
+ * entran) y oculta flechas/puntos — no hay forma de saber en build time
+ * si "overflow" porque depende del viewport real del visitante.
  *
  * Filtro por defecto + hover a color real (pedido del Tech Lead): cada
  * logo sale con un filtro CSS (`properties.media_filter_grayscale`/
@@ -28,6 +46,37 @@
  * `url` por logo (pedido implícito — el campo ya existía en el form de
  * Studio pero nunca se consumía acá): si el item trae `url`, el logo se
  * envuelve en un `<a>`; si no, es una imagen suelta sin link.
+ *
+ * **Corrección 2026-09-02 (pedido del Tech Lead — "recalcular los dots...
+ * 10 brands, se muestran de 4 o 5 en 5 y se autocompletan con los primeros,
+ * entonces deberian ser 2 a 3 dots"):** el modelo de puntos de la
+ * reescritura del 2026-09-01 (ver arriba) era una VENTANA DESLIZANTE —
+ * avanzaba de a 1 logo por vez y contaba `items.length - itemsPorVista + 1`
+ * posiciones alcanzables (con 10 logos y 6 visibles a la vez daba 5 puntos,
+ * que es justo el bug reportado). Eso no es lo que pide el Tech Lead: la
+ * navegación debe avanzar de a PÁGINA completa (tantos logos como entren a
+ * la vez) y la cantidad de puntos pasa a ser `Math.ceil(items.length /
+ * itemsPorVista)` (con 10 logos y 6 visibles: 2 páginas, no 5) — mismo
+ * criterio que ya se aplicó el mismo día a `Testimonials.astro`
+ * (`MAX_GRID_ITEMS` fijo en vez de `itemsPorVista` variable, pero la
+ * fórmula del conteo es la misma: techo de total/paso).
+ *
+ * La diferencia real con `Testimonials.astro` es el "autocompletado con los
+ * primeros items" de la última página: ahí se resuelve armando las páginas
+ * en build time con índice circular (`items[(p*3+i) % items.length]`)
+ * porque el track son divs armados a mano. Acá el track es scroll nativo
+ * item por item (necesario porque `itemsPorVista` cambia por breakpoint, no
+ * se puede pre-armar "la página" sin saber cuántos entran). La solución:
+ * el script (ver más abajo) CLONA los primeros logos (hasta 7, el máximo de
+ * la spec) y los agrega al final del track, ocultos (`aria-hidden`) pero
+ * scrolleables — al llegar a la última página real (que puede venir
+ * incompleta, ej. logos 9-10 con 4 visibles), el scroll nativo sigue
+ * mostrando los clones (logo 1, logo 2...) para completar el ancho de la
+ * página, sin dejar un hueco vacío ni cortar la fila. `itemsPorVista` ya no
+ * se puede "contar" mirando cuántos items empiezan antes del scroll máximo
+ * (eso era la ventana deslizante) — ahora se MIDE (ancho real del primer
+ * logo vs. ancho del track) y de ahí sale tanto la cantidad de páginas como
+ * el índice de item al que hay que saltar por cada página.
  */
 import type { Block, Media } from '../../lib/types';
 import { Icon } from 'astro-icon/components';
@@ -55,6 +104,18 @@ const items = (Array.isArray(content.items) ? content.items : []).filter((item) 
 interface LogosProperties {
   background_color?: string | null;
   padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /**
+   * `content_width` (2026-09-01, pedido del Tech Lead): mismo property
+   * genérico que ya usan `split`/`rich_text` (`PropertiesSchema` en
+   * genesis) — acá solo se usan 2 de sus 3 valores posibles (`full`/
+   * `boxed`; si llegara `narrow` desde datos legados/futuros se trata
+   * como `boxed`, ver `CONTENT_WIDTH_CLASSES` abajo). A diferencia de
+   * `split`/`rich_text` (que caen a `boxed` cuando la property no está
+   * seteada), acá el default es `full` — pedido explícito del Tech Lead
+   * ("por default sea fullwidth"), tiene sentido además para una franja
+   * de marcas que suele ir borde a borde.
+   */
+  content_width?: 'full' | 'boxed' | 'narrow';
   media_filter_grayscale?: number | null;
   media_opacity?: number | null;
 }
@@ -64,11 +125,29 @@ const properties = (block.properties as LogosProperties) ?? {};
 const PADDING_Y_CLASSES: Record<NonNullable<LogosProperties['padding_y']>, string> = {
   sm: 'py-10 3md:py-14',
   md: 'py-14 3md:py-20',
-  lg: 'py-16 3md:py-24',
+  // 80px (py-20) es el estándar del design system para el padding vertical
+  // de sección a partir de `lg` (1080px) — valor tomado del dev-mode de
+  // Figma. Por debajo de `lg` se achica de forma responsive (48px base).
+  lg: 'py-12 lg:py-20',
   xl: 'py-20 3md:py-32',
 };
 
 const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+// `full`: fullwidth real (sin cap de ancho), con el mismo padding
+// horizontal responsive que usa RichText.astro para su variante `full`
+// (base más chico en mobile, 80px fijo desde `3md`/960px) — no bleed a
+// cero (`px-0`) como en Split.astro, porque acá no hay una sola imagen
+// para hacer sangrar hasta el borde, sino una grilla de logos + el
+// heading opcional (pretitle/title/subtitle) que necesitan algo de aire.
+// `boxed`: el cap de 1152px (`max-w-6xl`) que ya traía este bloque antes
+// de que existiera la property (comportamiento previo, sin cambios).
+const CONTENT_WIDTH_CLASSES: Record<'full' | 'boxed', string> = {
+  full: 'max-w-none px-6 3md:px-[80px]',
+  boxed: 'max-w-6xl px-4 sm:px-6 lg:px-8',
+};
+const contentWidth = properties.content_width === 'boxed' ? 'boxed' : 'full';
+const contentWidthClass = CONTENT_WIDTH_CLASSES[contentWidth];
 
 const sectionStyle = properties.background_color ? `background-color: ${properties.background_color};` : '';
 
@@ -76,70 +155,63 @@ const logoGrayscale = Math.min(100, Math.max(0, properties.media_filter_grayscal
 const logoOpacity = Math.min(100, Math.max(0, properties.media_opacity ?? 100));
 const logoFilterStyle = `--logo-grayscale: ${logoGrayscale}%; --logo-opacity: ${logoOpacity}%;`;
 
-// 7 columnas por página en desktop — ver docblock arriba. Agrupado acá
-// (no en el backend): la API sigue entregando `content.items[]` plano,
-// paginar es una decisión de presentación del frontend.
-const ITEMS_PER_PAGE = 7;
-const pages: LogoItem[][] = [];
-for (let i = 0; i < items.length; i += ITEMS_PER_PAGE) {
-  pages.push(items.slice(i, i + ITEMS_PER_PAGE));
-}
-const useCarousel = pages.length > 1;
+/**
+ * Ancho de cada logo por breakpoint — ver docblock arriba para la spec
+ * completa (1/2/3/4/6/7 visibles a la vez). Fórmula: `calc(100%/N -
+ * (N-1)/N * gap)`, `gap` = `gap-8` = 2rem (mismo track que aplica ese
+ * gap). Mobile (`N=1`) no resta nada — un solo item llena el 100% del
+ * track, no hay gap "de más" que descontar.
+ *   N=2 (sm/540):  calc(50% - 1rem)
+ *   N=3 (2md/810): calc(33.333% - 1.334rem)   — mismo valor exacto que ya
+ *                  usa `Testimonials.astro` para su variante de 3 columnas.
+ *   N=4 (3lg/1200): calc(25% - 1.5rem)
+ *   N=6 (2xl/1440): calc(16.667% - 1.667rem)
+ *   N=7 (5xl/1700): calc(14.286% - 1.714rem)
+ */
+const LOGO_ITEM_WIDTH_CLASS =
+  'basis-full sm:basis-[calc(50%-1rem)] 2md:basis-[calc(33.333%-1.334rem)] 3lg:basis-[calc(25%-1.5rem)] 2xl:basis-[calc(16.667%-1.667rem)] 5xl:basis-[calc(14.286%-1.714rem)]';
 ---
 
 <section class="w-full" style={sectionStyle || undefined}>
-  <div class={`mx-auto flex max-w-6xl flex-col items-center gap-8 px-4 sm:px-6 lg:px-8 ${paddingYClass}`}>
+  <div class={`mx-auto flex flex-col items-center gap-8 ${contentWidthClass} ${paddingYClass}`}>
     {
       (block.pretitle || block.title || block.subtitle) && (
         <div class="flex w-full flex-col items-center gap-1 text-center">
           {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
-          {block.title && <h2 class="w-full text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl">{block.title}</h2>}
+          {block.title && <h2 class="3md:text-3xl w-full text-3xl font-bold sm:text-4xl md:text-2xl 2xl:text-4xl 5xl:text-[40px]">{block.title}</h2>}
           {block.subtitle && <p class="w-full text-lg font-light opacity-90 md:text-base">{block.subtitle}</p>}
         </div>
       )
     }
 
     {
-      pages.length > 0 && !useCarousel && (
-        <div class="grid w-full grid-cols-3 items-center justify-items-center gap-8 sm:grid-cols-4 md:grid-cols-5 2lg:grid-cols-7">
-          {pages[0].map((item) => (
-            <a
-              href={item.url || undefined}
-              target={item.url ? '_blank' : undefined}
-              rel={item.url ? 'noopener noreferrer' : undefined}
-              class:list={['logo-item', { 'pointer-events-none': !item.url }]}
-              style={logoFilterStyle}
-              aria-label={item.media?.alt_text || undefined}
-            >
-              <img src={item.media!.url!} alt={item.media?.alt_text ?? ''} class="h-10 w-auto object-contain sm:h-12" loading="lazy" />
-            </a>
-          ))}
-        </div>
-      )
-    }
-
-    {
-      pages.length > 0 && useCarousel && (
+      items.length > 0 && (
         <div class="relative w-full" data-logos-carousel>
-          <div
-            class="logos-track flex snap-x snap-mandatory gap-8 overflow-x-auto scroll-smooth"
-            data-logos-track
-          >
-            {pages.map((page) => (
-              <div class="grid w-full shrink-0 snap-center grid-cols-3 items-center justify-items-center gap-8 sm:grid-cols-4 md:grid-cols-5 2lg:grid-cols-7" data-logos-page>
-                {page.map((item) => (
-                  <a
-                    href={item.url || undefined}
-                    target={item.url ? '_blank' : undefined}
-                    rel={item.url ? 'noopener noreferrer' : undefined}
-                    class:list={['logo-item', { 'pointer-events-none': !item.url }]}
-                    style={logoFilterStyle}
-                    aria-label={item.media?.alt_text || undefined}
-                  >
-                    <img src={item.media!.url!} alt={item.media?.alt_text ?? ''} class="h-10 w-auto object-contain sm:h-12" loading="lazy" />
-                  </a>
-                ))}
-              </div>
+          <div class="logos-track flex snap-x snap-mandatory gap-8 overflow-x-auto scroll-smooth" data-logos-track>
+            {items.map((item) => (
+              <a
+                href={item.url || undefined}
+                target={item.url ? '_blank' : undefined}
+                rel={item.url ? 'noopener noreferrer' : undefined}
+                class:list={['logo-item flex shrink-0 snap-center items-center justify-center', LOGO_ITEM_WIDTH_CLASS, { 'pointer-events-none': !item.url }]}
+                style={logoFilterStyle}
+                aria-label={item.media?.alt_text || undefined}
+                data-logos-item
+              >
+                {
+                  /* 2026-09-01, pedido del Tech Lead ("el tamaño de los logos
+                     estan muy pequeños... el triple de tamaño actual"): antes
+                     `h-10`/`sm:h-12` (40px/48px) — el triple exacto es
+                     120px/144px, valores arbitrarios porque la escala de
+                     Tailwind no tiene un paso que caiga justo ahí. */
+                }
+                <img
+                  src={item.media!.url!}
+                  alt={item.media?.alt_text ?? ''}
+                  class="h-[120px] w-auto object-contain sm:h-[144px]"
+                  loading="lazy"
+                />
+              </a>
             ))}
           </div>
 
@@ -147,32 +219,38 @@ const useCarousel = pages.length > 1;
             type="button"
             class="text-cicagold-500 absolute top-1/2 left-0 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
             data-logos-prev
-            aria-label="Página anterior"
+            aria-label="Logo anterior"
           >
             <Icon name="ph:caret-left" class="size-5" />
           </button>
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-10 w-10 -translate-y-1/2 translate-x-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-10 w-10 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
             data-logos-next
-            aria-label="Página siguiente"
+            aria-label="Logo siguiente"
           >
             <Icon name="ph:caret-right" class="size-5" />
           </button>
 
-          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Páginas de logos">
-            {pages.map((_, index) => (
-              <button
-                type="button"
-                class="data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-black/20 transition-all data-[active=true]:w-6"
-                data-logos-dot
-                data-index={index}
-                aria-label={`Ir a la página ${index + 1}`}
-                aria-selected={index === 0 ? 'true' : 'false'}
-                role="tab"
-              />
-            ))}
-          </div>
+          {
+            /**
+             * Los puntos NO se arman acá con un `items.map()` — se siguen
+             * armando en runtime (`buildDots()`, ver el script más abajo),
+             * porque cuántos logos entran a la vez (`itemsPorVista`) cambia
+             * por breakpoint y no se puede saber en build time.
+             *
+             * **Corrección 2026-09-02** (ver docblock del frontmatter para
+             * el detalle completo): la cuenta pasó de "ventana deslizante"
+             * (`items.length - itemsPorVista + 1`, avanzando de a 1 logo)
+             * a "páginas completas con wraparound" (`Math.ceil(items.length
+             * / itemsPorVista)`, avanzando de a `itemsPorVista` logos por
+             * vez). Ejemplo real: 10 logos, 6 visibles a la vez → 2 páginas
+             * (antes daba 5 puntos con la ventana deslizante, el bug
+             * reportado). La última página, si queda incompleta, se
+             * completa con logos clonados del principio (ver script).
+             */
+          }
+          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Logos" data-logos-dots />
         </div>
       )
     }
@@ -197,8 +275,20 @@ const useCarousel = pages.length > 1;
     user-select: none;
   }
 
-  .logos-track.is-dragging [data-logos-page] {
+  .logos-track.is-dragging [data-logos-item] {
     pointer-events: none;
+  }
+
+  /* Flechas/puntos arrancan ocultos por default (sin JS, o antes de que el
+     JS termine de medir si hace falta scrollear) — `updateOverflow()` los
+     revela recién cuando el track real desborda en el viewport actual.
+     Evita mostrar controles de carousel cuando los logos reales ya entran
+     todos sin scroll (ej. 3 logos reales en un breakpoint que muestra 7 a
+     la vez). */
+  [data-logos-carousel]:not([data-overflowing='true']) [data-logos-prev],
+  [data-logos-carousel]:not([data-overflowing='true']) [data-logos-next],
+  [data-logos-carousel]:not([data-overflowing='true']) [data-logos-dots] {
+    display: none;
   }
 
   /* Filtro por defecto (grayscale + opacidad, configurables desde
@@ -220,11 +310,28 @@ const useCarousel = pages.length > 1;
 </style>
 
 <script>
-  // Carousel PAGINADO de logos — mismo patrón vainilla que
-  // `Testimonials.astro`/`Hero.astro`, pero cada "slide" acá es una
-  // PÁGINA de hasta 7 logos (grupo fijo), no un item individual. Drag con
-  // Pointer Events (mouse+touch+pen) + flechas + puntos + auto-avance,
-  // pausa en interacción, respeta `prefers-reduced-motion`.
+  // Carousel de logos, por PÁGINA completa (2026-09-02, reescrito — antes
+  // avanzaba de a 1 logo con "ventana deslizante", ver docblock del
+  // frontmatter para el detalle del bug y la corrección pedida por el Tech
+  // Lead). Mismo patrón vainilla que `Testimonials.astro`: drag con Pointer
+  // Events (mouse+touch+pen), auto-avance con pausa en interacción, respeta
+  // `prefers-reduced-motion`.
+  //
+  // Diferencia real con `Testimonials.astro`: acá la cantidad de items
+  // visibles a la vez (`itemsPerView`) CAMBIA con el breakpoint (1 en
+  // mobile, hasta 7 desde `5xl`), así que ni cuántas páginas hay ni el
+  // ancho de cada una se pueden decidir en build time — se MIDEN en
+  // runtime (`updateOverflow()`, comparando el ancho real del primer logo
+  // contra el ancho del track) y se recalculan en cada resize.
+  //
+  // Wraparound de la última página ("autocompletando con los primeros
+  // items", pedido explícito): como el track es scroll nativo item por
+  // item (no páginas pre-armadas como en `Testimonials.astro`), se clonan
+  // los primeros logos (hasta 7, el máximo de la spec) y se agregan al
+  // final del track, ocultos para lectores de pantalla (`aria-hidden`)
+  // pero scrolleables — al saltar a la última página real, si queda
+  // incompleta, el scroll nativo sigue mostrando los clones para completar
+  // el ancho de la página en vez de dejar un hueco vacío.
   function initLogosCarousels() {
     const roots = document.querySelectorAll('[data-logos-carousel]');
 
@@ -233,32 +340,70 @@ const useCarousel = pages.length > 1;
       root.dataset.logosInitialized = 'true';
 
       const track = root.querySelector('[data-logos-track]');
-      const pages = Array.from(root.querySelectorAll('[data-logos-page]'));
-      const dots = Array.from(root.querySelectorAll('[data-logos-dot]'));
+      const realItems = Array.from(root.querySelectorAll('[data-logos-item]'));
+      const dotsContainer = root.querySelector('[data-logos-dots]');
       const prevBtn = root.querySelector('[data-logos-prev]');
       const nextBtn = root.querySelector('[data-logos-next]');
 
-      if (!(track instanceof HTMLElement) || pages.length <= 1) return;
+      if (!(track instanceof HTMLElement) || realItems.length <= 1) return;
 
-      const intervalMs = 6000;
+      // Máximo de logos visibles a la vez según la spec del bloque (ver
+      // docblock del frontmatter: 1/2/3/4/6/7 según breakpoint) — el tope
+      // de cuántos logos hace falta clonar para que CUALQUIER página,
+      // en CUALQUIER breakpoint, pueda completarse con logos reales del
+      // principio (no clones de clones).
+      const MAX_ITEMS_PER_VIEW_SPEC = 7;
+      const cloneCount = Math.min(realItems.length, MAX_ITEMS_PER_VIEW_SPEC);
+      const clones: HTMLElement[] = [];
+      for (let i = 0; i < cloneCount; i++) {
+        const clone = realItems[i].cloneNode(true) as HTMLElement;
+        clone.removeAttribute('data-logos-item');
+        clone.dataset.logosClone = 'true';
+        clone.setAttribute('aria-hidden', 'true');
+        clone.setAttribute('tabindex', '-1');
+        // Los links clonados no deben ser alcanzables por teclado (son
+        // decorativos, el logo real ya es tabulable en su posición
+        // original) — sin esto un `<a>` clonado seguiría en el tab order.
+        clone.querySelectorAll('a').forEach((a) => a.setAttribute('tabindex', '-1'));
+        track.appendChild(clone);
+        clones.push(clone);
+      }
+      // `allItems` direcciona posiciones de scroll (reales + clones al
+      // final) — una página `p` empieza en el item real `p * itemsPerView`,
+      // que puede caer dentro de los clones cuando la última página real
+      // queda incompleta (eso es justamente el wraparound).
+      const allItems = [...realItems, ...clones];
+
+      const intervalMs = 4000;
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       let current = 0;
       let timer: number | undefined;
       let resumeTimer: number | undefined;
+      let isOverflowing = false;
+      // Cuántos logos entran a la vez en el viewport actual — medido en
+      // `updateOverflow()`, cambia por breakpoint (ver spec en el
+      // docblock del frontmatter).
+      let itemsPerView = 1;
+      // Cantidad de páginas = techo(logos reales / itemsPerView). Con 10
+      // logos y 6 visibles a la vez: 2 páginas (antes daban 5 puntos con
+      // la ventana deslizante — el bug reportado).
+      let totalPages = 1;
+      let dots: Element[] = [];
 
-      function scrollToIndex(index: number) {
-        const next = ((index % pages.length) + pages.length) % pages.length;
-        const target = pages[next] as HTMLElement;
+      function scrollToIndex(page: number) {
+        const next = ((page % totalPages) + totalPages) % totalPages;
+        const itemIndex = Math.min(next * itemsPerView, allItems.length - 1);
+        const target = allItems[itemIndex] as HTMLElement;
         track!.scrollTo({ left: target.offsetLeft - (track as HTMLElement).offsetLeft, behavior: 'smooth' });
         setActive(next);
       }
 
-      function setActive(index: number) {
-        current = index;
+      function setActive(page: number) {
+        current = page;
         dots.forEach((dot, dotIndex) => {
-          dot.setAttribute('data-active', dotIndex === index ? 'true' : 'false');
-          dot.setAttribute('aria-selected', dotIndex === index ? 'true' : 'false');
+          dot.setAttribute('data-active', dotIndex === page ? 'true' : 'false');
+          dot.setAttribute('aria-selected', dotIndex === page ? 'true' : 'false');
         });
       }
 
@@ -268,7 +413,7 @@ const useCarousel = pages.length > 1;
       }
 
       function start() {
-        if (prefersReducedMotion) return;
+        if (prefersReducedMotion || !isOverflowing) return;
         stop();
         timer = window.setInterval(() => scrollToIndex(current + 1), intervalMs);
       }
@@ -279,22 +424,107 @@ const useCarousel = pages.length > 1;
         resumeTimer = window.setTimeout(start, 2500);
       }
 
-      function nearestIndex(): number {
+      /** Busca la página cuyo item inicial está más cerca del scroll actual (0..totalPages-1). */
+      function nearestPage(): number {
         const trackEl = track as HTMLElement;
         const targetLeft = trackEl.scrollLeft + trackEl.offsetLeft;
 
         let closest = 0;
         let closestDistance = Infinity;
 
-        pages.forEach((page, index) => {
-          const distance = Math.abs((page as HTMLElement).offsetLeft - targetLeft);
+        for (let page = 0; page < totalPages; page++) {
+          const itemIndex = Math.min(page * itemsPerView, allItems.length - 1);
+          const distance = Math.abs((allItems[itemIndex] as HTMLElement).offsetLeft - targetLeft);
           if (distance < closestDistance) {
             closestDistance = distance;
-            closest = index;
+            closest = page;
           }
-        });
+        }
 
         return closest;
+      }
+
+      /**
+       * Mide cuántos logos REALES entran a la vez en el ancho actual del
+       * track: ancho real del primer logo (todos miden lo mismo dentro de
+       * un breakpoint, mismo `basis-*`) + el gap real entre items (leído
+       * del CSS computado, no hardcodeado, por si el gap cambia). Un
+       * logo entra completo aunque falte una fracción de gap, de ahí el
+       * `Math.round` en vez de `Math.floor`.
+       */
+      function measureItemsPerView(): number {
+        const trackEl = track as HTMLElement;
+        const firstItem = realItems[0] as HTMLElement;
+        const itemWidth = firstItem.getBoundingClientRect().width;
+        if (itemWidth <= 0) return 1;
+
+        const trackStyle = window.getComputedStyle(trackEl);
+        const gapPx = Number.parseFloat(trackStyle.columnGap || trackStyle.gap || '32') || 32;
+
+        const measured = Math.round((trackEl.clientWidth + gapPx) / (itemWidth + gapPx));
+        return Math.max(1, measured);
+      }
+
+      /** Reconstruye los puntos del DOM para que haya exactamente `count` — uno por PÁGINA, no por logo. */
+      function buildDots(count: number) {
+        if (!(dotsContainer instanceof HTMLElement)) return;
+
+        dotsContainer.innerHTML = '';
+        const built: HTMLButtonElement[] = [];
+
+        for (let page = 0; page < count; page++) {
+          const dot = document.createElement('button');
+          dot.type = 'button';
+          dot.className =
+            'data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-black/20 transition-all data-[active=true]:w-6';
+          dot.dataset.index = String(page);
+          dot.setAttribute('role', 'tab');
+          dot.setAttribute('aria-label', `Ir a la página ${page + 1} de logos`);
+          dot.setAttribute('aria-selected', page === 0 ? 'true' : 'false');
+          dot.addEventListener('click', () => {
+            scrollToIndex(page);
+            pauseThenResume();
+          });
+          dotsContainer.appendChild(dot);
+          built.push(dot);
+        }
+
+        dots = built;
+      }
+
+      // Recalculado en cada resize: el breakpoint activo cambia cuántos
+      // logos entran a la vez, así que tanto si "desborda" (hace falta
+      // scroll) como la cantidad real de páginas pueden cambiar según el
+      // ancho real del viewport — ninguno de los dos es un valor fijo
+      // decidido en build time.
+      function updateOverflow() {
+        itemsPerView = measureItemsPerView();
+
+        const nextTotalPages = Math.max(1, Math.ceil(realItems.length / itemsPerView));
+        isOverflowing = nextTotalPages > 1;
+        (root as HTMLElement).dataset.overflowing = isOverflowing ? 'true' : 'false';
+
+        // Los clones solo deben ocupar ancho en el track (y ser
+        // alcanzables por scroll) cuando realmente hacen falta para
+        // completar una última página incompleta — si todos los logos
+        // reales ya entran de una, se ocultan para no inflar el
+        // `scrollWidth` con contenido que nunca se va a mostrar.
+        clones.forEach((clone) => {
+          clone.style.display = isOverflowing ? '' : 'none';
+        });
+
+        if (nextTotalPages !== totalPages || dots.length !== nextTotalPages) {
+          totalPages = nextTotalPages;
+          buildDots(totalPages);
+        }
+
+        if (isOverflowing) {
+          setActive(nearestPage());
+          start();
+        } else {
+          stop();
+          if (resumeTimer) window.clearTimeout(resumeTimer);
+        }
       }
 
       let isDragging = false;
@@ -303,6 +533,7 @@ const useCarousel = pages.length > 1;
       let dragStartScrollLeft = 0;
 
       function onPointerDown(event: PointerEvent) {
+        if (!isOverflowing) return;
         isDragging = true;
         dragPointerId = event.pointerId;
         dragStartX = event.clientX;
@@ -321,7 +552,7 @@ const useCarousel = pages.length > 1;
         if (!isDragging || event.pointerId !== dragPointerId) return;
         isDragging = false;
         (track as HTMLElement).classList.remove('is-dragging');
-        scrollToIndex(nearestIndex());
+        scrollToIndex(nearestPage());
         pauseThenResume();
       }
 
@@ -344,16 +575,13 @@ const useCarousel = pages.length > 1;
         pauseThenResume();
       });
 
-      dots.forEach((dot) => {
-        dot.addEventListener('click', () => {
-          const index = Number.parseInt(dot.getAttribute('data-index') ?? '0', 10);
-          scrollToIndex(index);
-          pauseThenResume();
-        });
+      let resizeTimer: number | undefined;
+      window.addEventListener('resize', () => {
+        window.clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(updateOverflow, 150);
       });
 
-      setActive(0);
-      start();
+      updateOverflow();
     });
   }
 

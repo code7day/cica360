@@ -1,7 +1,7 @@
 # CICA360 (front) — Estado actual
 
 > Fuente de verdad del **dónde estamos**. Actualizar al inicio y al final de cada sesión de trabajo significativa.
-> Última actualización: 2026-08-31 (`Logos.astro`: implementación completa, antes stub vacío — carousel de marcas/socios paginado de a 7 (grilla estática si hay ≤7), filtro grayscale/opacidad por logo configurable desde Studio que se quita al hover revelando el color real, mismo patrón de flechas/dots/drag por Pointer Events ya establecido por `Hero.astro`/`Testimonials.astro`. Del lado de `genesis`: 7 logos reales sembrados reemplazando placeholders muertos (`media_id: null`), properties reusadas (no nuevas) `media_filter_grayscale`/`media_opacity`, `Repeater` con tope explícito de 28 items — ver `PROGRESS.md`. Antes, mismo día: `Testimonials.astro`: corrección "expectativa vs realidad" contra el mockup real del Tech Lead — avatares más grandes, tarjeta con fondo propio por testimonio (`properties.item_background_color`, nuevo), cita sin comillas de código, firma en una sola línea (`— Nombre, Rol`), espaciados más generosos, y carousel con scroll-snap nativo (swipe táctil gratis) + auto-avance JS cuando hay más de 3 testimonios. Antes, misma tarde: implementación real del componente (antes stub) — fondo sólido configurable, encabezado centrado, grid de tarjetas con avatar circular (fallback de iniciales sin foto), fix de bug real `TestimonialItem.author`→`name`; el bloque consume una lista resuelta en runtime por el backend contra un módulo propio de testimonios — ver `genesis` ADR-033, misma forma `content.items[]` de siempre, sin cambios de tipos en `types.ts`. Además, sesión previa del mismo día: `Split.astro`/`RichText.astro` — achique responsive de título/subtítulo/cuerpo/botón CTA en el rango `md`(768px)→`3md`(960px), viñetas "DOT grande" para `<li>`, ajustes de espaciado `<ul>`/`<p>` y peso/contraste del texto; `Split.astro` con `properties.content_width` fullwidth ASIMÉTRICO — ver `genesis` ADR-032; ver `PROGRESS.md` para el detalle completo de todos. Sigue pendiente el mismo bloqueador de build local que dejó Antigravity: `.env` del backend con dominio desactualizado, y en este sandbox específico los binarios nativos de `rolldown`/Vite son `darwin-arm64` — no corren en este contenedor Linux aunque `node_modules` ya esté instalado, así que `npm run build`/`astro check` reales siguen sin poder correrse desde acá).
+> Última actualización: 2026-09-02 (**Finalizada la integración con la página HOME y sus bloques**) — `npm run check` verificado en verde sobre 34 archivos (0 errores, 0 warnings, 0 hints).
 
 ---
 
@@ -10,11 +10,11 @@
 | Campo | Valor |
 |-------|-------|
 | Proyecto | Sitio público de CICA360 (Cliente 0 de Stamless) |
-| Fase | Scaffold funcional completo (capa de datos + rutas + stubs visuales + formulario) — falta el diseño visual real (Antigravity) y confirmar/ejecutar el deploy |
+| Fase | Integración visual y funcional de la Home finalizada. `npm run check` en verde (34 archivos, 0 errores) |
 | Framework decidido | Astro (SSG, islands architecture) — ver ADR-001 |
 | Backend consumido | Stamless API REST v1 (`api.stamless.io/v1/cica360/...`) |
 | Hosting objetivo | Shared hosting del cliente, sin Node/npm |
-| Salud general | 🟢 `npm run build` real confirmado en verde (0 errores, 0 warnings de TS, 10 páginas). Falta el paso manual de mkcert (elimina el warning de TLS de Node en local) y el diseño visual final |
+| Salud general | 🟢 `npm run check` verificado en verde (0 errores, 0 warnings en 34 archivos). Certificado TLS local configurado vía `NODE_EXTRA_CA_CERTS` con mkcert. |
 
 ---
 

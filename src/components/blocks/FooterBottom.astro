@@ -1,0 +1,116 @@
+---
+/**
+ * Bloque `footer_bottom` — rediseño completo 2026-09-02 (ver genesis
+ * ADR-042, actualización). Reemplaza la v1 (2 campos de texto libres) por:
+ *
+ * IZQUIERDA — copyright, SIEMPRE visible (a diferencia de la v1, que podía
+ * no renderizar nada), 3 estados según el plan del tenant (ver genesis
+ * ADR-043, "plan Auspicio/Convenio" — antes eran solo 2):
+ *   1. `content.copyright_html` (HTML ya compuesto y sanitizado por el
+ *      backend, con el fragmento del tenant escapado — SOLO presente en el
+ *      plan Auspicio/Convenio): se renderiza como HTML crudo (`set:html`),
+ *      incluye el `<br/>` y el link "Powered by Stamless" de la plantilla
+ *      fija.
+ *   2. `content.copyright_text` (texto plano libre, planes pagos sin
+ *      plantilla forzada).
+ *   3. FALLBACK hardcodeado de marca Stamless (Free/Freemium — el backend
+ *      ya fuerza ambos campos a `null`).
+ *
+ * DERECHA — opcional, mutuamente excluyente (decidido en Studio vía un
+ * único Select `content.right_type`): un `<nav>` semántico (SEO) con los
+ * items de nivel principal de `content.menu` si se eligió "Mostrar menú";
+ * el texto de `content.right_text` si se eligió "Mostrar texto
+ * personalizado"; sin ninguno de los 2, el div derecho no se renderiza y
+ * el copyright queda centrado — mismo criterio de layout que la v1 tenía
+ * para sus 2 campos, ahora aplicado a copyright vs. contenido derecho.
+ */
+import type { Block, FooterBottomContent } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+const content = block.content as unknown as FooterBottomContent;
+
+// Fallback de marca de Stamless — nunca vacío, cubre Free/Freemium (donde
+// ambos campos de copyright viajan `null` a propósito, forzado por el
+// backend) y cualquier tenant pago que todavía no cargó uno propio.
+const FALLBACK_COPYRIGHT = `© ${new Date().getFullYear()} Stamless CMS Headless. Todos los derechos reservados.`;
+const copyrightHtml = content?.copyright_html?.trim() || null;
+const copyright = content?.copyright_text?.trim() || FALLBACK_COPYRIGHT;
+
+const menuItems = (content?.right_type === 'menu' && content.menu?.items?.filter((item) => item.href && item.title)) || [];
+const rightText = content?.right_type === 'text' ? content.right_text?.trim() || null : null;
+const hasRight = menuItems.length > 0 || Boolean(rightText);
+
+interface FooterBottomProperties extends BackgroundColorProperties {
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+}
+
+const properties = (block.properties as FooterBottomProperties) ?? {};
+const backgroundStyle = resolveBackgroundStyle(properties);
+const textColorStyle = properties.text_color ? `color: ${properties.text_color};` : '';
+const sectionStyle = `${backgroundStyle} ${textColorStyle}`.trim();
+
+// Mismo mapa de `padding_y` que `Colophon.astro`.
+const PADDING_Y_CLASSES: Record<NonNullable<FooterBottomProperties['padding_y']>, string> = {
+  sm: 'py-3',
+  md: 'py-4',
+  lg: 'py-6',
+  xl: 'py-8',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'md'];
+---
+
+<section class="w-full border-t border-white/10" style={sectionStyle || undefined}>
+  <div
+    class={`mx-auto flex max-w-6xl flex-col gap-2 px-4 text-sm opacity-80 sm:px-6 lg:px-8 ${paddingYClass} ${
+      hasRight ? 'sm:flex-row sm:items-center sm:justify-between' : 'items-center text-center'
+    }`}
+  >
+    {copyrightHtml ? <p data-copyright-html set:html={copyrightHtml} /> : <p>{copyright}</p>}
+
+    {
+      hasRight && (
+        <>
+          {menuItems.length > 0 ? (
+            <nav aria-label="Enlaces del pie de página">
+              <ul class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 sm:justify-end">
+                {menuItems.map((item) => (
+                  <li>
+                    <a href={item.href ?? '#'} class="transition hover:opacity-100 hover:underline">
+                      {item.title}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ) : (
+            <p>{rightText}</p>
+          )}
+        </>
+      )
+    }
+  </div>
+</section>
+
+<style>
+  /*
+    Estilo del link "Powered by Stamless" embebido en `copyright_html`
+    (plan Auspicio/Convenio, ADR-043) — el HTML llega ya armado desde el
+    backend vía `set:html`, así que Tailwind nunca escanea sus clases; se
+    estiliza acá con un selector `:global()` scoped al propio bloque.
+  */
+  [data-copyright-html] :global(a) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    opacity: 0.9;
+    transition: opacity 200ms;
+  }
+  [data-copyright-html] :global(a:hover) {
+    opacity: 1;
+  }
+</style>

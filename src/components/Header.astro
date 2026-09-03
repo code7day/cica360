@@ -58,6 +58,14 @@
  *   Link default: padding 8 20, radius 30px, font Lato Light 16.
  *     Light: fill transparent / text #2D2C4D. Dark: fill transparent / text #FFFFFF.
  *   Link hover:   fill #625B82 (cicaindigo-400), text #FFFFFF, radius 100px, font Lato Regular 16 (ambas variantes).
+ *     2026-09-02, se pisa a propósito el "font Lato Regular" del hover (ver
+ *     `linkBaseClass` más abajo): pasar de Light a Regular EN el hover
+ *     cambia el ancho del texto, y como los links viven en un `<ul
+ *     class="flex">`, eso reflowea a los hermanos — se leía como que el
+ *     menú "bailaba" al pasar el mouse (reportado en vivo por el Tech
+ *     Lead). El peso queda fijo en Light; el "impacto" visual del hover se
+ *     logra con `hover:scale-105` (no participa del layout, no mueve
+ *     hermanos) en vez de con el peso de fuente.
  *   Link active:  fill #2D2C4D (cicaindigo-500), text #FFFFFF, radius 100px, font Lato Regular 16 (ambas variantes).
  *   CTA light:    size 204×40 (medido en frame sticky), padding 12 24, radius 40px, fill #E8E4ED (cicaindigo-100) / text #2D2C4D, font Lato Italic 20, icon 16×16.
  *                 hover: fill #D9A00F (cicagold-600) / text #FFFFFF.
@@ -247,8 +255,39 @@ const magneticEase = '[transition-timing-function:cubic-bezier(0.34,1.56,0.64,1)
 // default del navegador (`transition-delay: 0s`) — inmediato.
 const shapeDelay = 'group-data-[scrolled=true]/nav:delay-200';
 
+// 2026-09-02, fix real reportado en vivo por el Tech Lead con captura ("al
+// pasar el mouse se mueve como agrandándose... el texto en negrita, al ser
+// más grueso al pasar el mouse parece que bailara de un costado a otro"):
+// el hover original cambiaba `font-light`→`font-normal` (300→400) — un peso
+// más grueso ocupa más ancho por el mismo texto, así que el botón (y con él
+// TODOS los hermanos del `<ul class="flex">`, que reflowean) literalmente
+// cambiaba de tamaño en cada hover/unhover, más notorio cuanto más larga la
+// palabra ("CASOS DE ÉXITO"). Se saca `hover:font-normal` del todo (el peso
+// queda fijo en `font-light` salvo el estado `isActive`, que es estático —
+// no jitterea porque no cambia EN el hover).
+//
+// 2da vuelta (2026-09-02, corrección del Tech Lead sobre la 1ra: "que no
+// crezca al hover... se mantenga en la misma posición del default"): la
+// 1ra versión probó `hover:scale-105` para dar "impacto" visual sin
+// reflow — pero el pedido real es que el botón NO cambie de tamaño en
+// absoluto, ni siquiera vía transform. Se saca el `scale` también.
+//
+// 3ra vuelta (2026-09-02, "como aplicar negrita al hover y active"): el
+// Tech Lead sigue queriendo el peso Bold/Regular de vuelta en hover Y
+// activo — la restricción sigue siendo cero reflow. Técnica CSS-only
+// ("ghost text", ver `<style>` al final del archivo, selector
+// `[data-nav-link]`): cada link reserva SIEMPRE el ancho de su propia
+// versión en negrita (vía un `::before` invisible con el mismo texto en
+// peso 400), así que subir el `<span>` visible de 300→400 en
+// `:hover`/`[aria-current="page"]` nunca agranda la caja ni mueve
+// hermanos — la celda ya estaba reservada a ese ancho desde el render
+// inicial. `inline-grid place-items-center` (antes `inline-flex
+// items-center justify-center`) es lo que permite superponer el `::before`
+// fantasma y el `<span>` real en la misma celda (`grid-area: 1 / 1`, ver
+// `<style>`) — el resto de los usos de `linkBaseClass` (mobile, sin la
+// técnica del ghost) se comportan igual que antes con este display.
 const linkBaseClass =
-  'inline-flex h-9 items-center justify-center rounded-[30px] px-5 text-base font-light uppercase transition-colors duration-200 hover:rounded-full hover:bg-cicaindigo-400 hover:font-normal hover:text-white';
+  'inline-grid h-9 place-items-center rounded-[30px] px-5 text-base font-light uppercase transition-colors duration-200 hover:rounded-full hover:bg-cicaindigo-400 hover:text-white';
 // CTA de la topbar (2026-08-31, responsive): en mobile (<3md) colapsa a un
 // círculo ícono-solo (`w-10`, sin `px-*` — el label queda oculto vía
 // `hidden 3md:inline` en el <span> del texto, ver más abajo); desde `3md`
@@ -416,13 +455,15 @@ const mobileIconBtnClass =
                         href={item.href ?? '#'}
                         target={item.target}
                         aria-current={isActive ? 'page' : undefined}
+                        data-nav-link
+                        data-label={item.title}
                         class={`${linkBaseClass} ${
                           isActive
-                            ? 'bg-cicaindigo-700 rounded-full font-normal text-white'
+                            ? 'bg-cicaindigo-700 rounded-full text-white'
                             : 'group-data-[scrolled=true]/nav:text-cicaindigo-500 text-white/90'
                         }`}
                       >
-                        {item.title}
+                        <span>{item.title}</span>
                       </a>
                     </li>
                   );
@@ -612,6 +653,60 @@ const mobileIconBtnClass =
 
 <style>
   /*
+    "Negrita sin reflow" en los links del nav principal (2026-09-02, 3ra
+    vuelta sobre el mismo problema — ver el comentario de `linkBaseClass`
+    en el frontmatter para el historial completo de las 3 vueltas). Cada
+    `[data-nav-link]` es un `inline-grid` de UNA sola celda con 2 capas
+    superpuestas (mismo `grid-area: 1 / 1` para ambas — así se apilan en
+    vez de ir a filas distintas):
+
+      1. Un `::before` invisible (`content: attr(data-label)`, mismo
+         texto que el link — de ahí el atributo `data-label` en el `<a>`)
+         YA en el peso "negrita" (Regular/400) de destino, pero
+         `visibility: hidden` — nunca se pinta, pero SÍ participa del
+         cálculo de tamaño del grid (a diferencia de `display: none`),
+         así que la celda queda pre-reservada al ancho MÁXIMO que el link
+         podría llegar a necesitar, desde el primer render.
+      2. El `<span>` real y visible (el texto que se ve), en Light (300)
+         por default — sube a Regular (400) en `:hover` o cuando el link
+         es la página activa (`[aria-current="page"]`, ya lo pone Astro
+         en el `<a>` más arriba).
+
+    Como la celda ya está reservada al ancho del peso negrita desde el
+    inicio, subir el peso del `<span>` en hover/activo NUNCA agranda la
+    caja ni mueve a ningún hermano del `<ul class="flex">` — sin importar
+    cuánto engorde el texto al pasar de 300 a 400. Sin JS, sin medir nada
+    en runtime.
+
+    Solo se usa en el nav DESKTOP (linkItems.map() más arriba, único lugar
+    que agrega `data-nav-link`/`data-label`) — el menú mobile overlay es
+    una lista vertical (`w-full`, una fila por item), ahí un cambio de
+    peso no compite por ancho con ningún hermano, así que no hace falta
+    esta técnica.
+  */
+  [data-nav-link] {
+    grid-template-columns: 1fr;
+  }
+
+  [data-nav-link]::before {
+    content: attr(data-label);
+    grid-area: 1 / 1;
+    font-weight: 400;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  [data-nav-link] > span {
+    grid-area: 1 / 1;
+    transition: font-weight 200ms ease-out;
+  }
+
+  [data-nav-link]:hover > span,
+  [data-nav-link][aria-current='page'] > span {
+    font-weight: 400;
+  }
+
+  /*
     Transición en dos velocidades de `data-glass-bar`, CONSCIENTE DE LA
     DIRECCIÓN (2026-08-30, 2da vuelta — la 1ra versión tenía un único
     `transition` fijo, que solo se veía bien yendo glassy→sticky).
@@ -771,8 +866,8 @@ const mobileIconBtnClass =
   }
 
   function initGlassDistortion(header: HTMLElement) {
-    const bar = header.querySelector('[data-glass-bar]');
-    if (!(bar instanceof HTMLElement)) return;
+    const bar = header.querySelector('[data-glass-bar]') as HTMLElement | null;
+    if (!bar) return;
 
     // La distorsión vía feImage/feDisplacementMap dentro de backdrop-filter
     // solo la soportan navegadores Chromium de forma confiable — en el
@@ -785,6 +880,7 @@ const mobileIconBtnClass =
     function applyDistortion() {
       // Solo tiene sentido en el estado glassy — en sticky el fondo ya es
       // blanco sólido y el spec pide "Glass: off".
+      if (!bar) return;
       if (header.dataset.scrolled === 'true') {
         bar.style.backdropFilter = '';
         return;
@@ -827,29 +923,31 @@ const mobileIconBtnClass =
   // de submenú, que es un <button>, no un <a> —
   // `overlay.querySelectorAll('a[href]')` ya los excluye naturalmente).
   function initMobileMenu(header: HTMLElement) {
-    const toggleBtn = header.querySelector('[data-mobile-menu-toggle]');
-    const overlay = header.querySelector('[data-mobile-menu]');
-    const closeBtn = overlay?.querySelector('[data-mobile-menu-close]');
+    const toggleBtn = header.querySelector('[data-mobile-menu-toggle]') as HTMLElement | null;
+    const overlay = header.querySelector('[data-mobile-menu]') as HTMLElement | null;
+    const closeBtn = overlay?.querySelector('[data-mobile-menu-close]') as HTMLElement | null;
 
-    if (!(toggleBtn instanceof HTMLElement) || !(overlay instanceof HTMLElement)) return;
+    if (!toggleBtn || !overlay) return;
+    const menuBtn = toggleBtn;
+    const menuOverlay = overlay;
 
     function isOpen(): boolean {
-      return toggleBtn.getAttribute('aria-expanded') === 'true';
+      return menuBtn.getAttribute('aria-expanded') === 'true';
     }
 
     // Centro real del botón hamburguesa en coordenadas de viewport — mismo
     // sistema de referencia que `position: fixed` (el overlay), así que no
     // hace falta restar scroll ni offsets de ningún contenedor padre.
     function setOriginFromToggle() {
-      const rect = toggleBtn.getBoundingClientRect();
-      overlay.style.setProperty('--menu-origin-x', `${rect.left + rect.width / 2}px`);
-      overlay.style.setProperty('--menu-origin-y', `${rect.top + rect.height / 2}px`);
+      const rect = menuBtn.getBoundingClientRect();
+      menuOverlay.style.setProperty('--menu-origin-x', `${rect.left + rect.width / 2}px`);
+      menuOverlay.style.setProperty('--menu-origin-y', `${rect.top + rect.height / 2}px`);
     }
 
     function openMenu() {
       setOriginFromToggle();
-      overlay.dataset.open = 'true';
-      toggleBtn.setAttribute('aria-expanded', 'true');
+      menuOverlay.dataset.open = 'true';
+      menuBtn.setAttribute('aria-expanded', 'true');
       // Bloqueo de scroll del body mientras el overlay está abierto —
       // patrón estándar para menús fullscreen, evita que el usuario
       // scrollee "detrás" del menú en iOS/Android.
@@ -858,8 +956,8 @@ const mobileIconBtnClass =
 
     function closeMenu() {
       setOriginFromToggle();
-      overlay.dataset.open = 'false';
-      toggleBtn.setAttribute('aria-expanded', 'false');
+      menuOverlay.dataset.open = 'false';
+      menuBtn.setAttribute('aria-expanded', 'false');
       document.body.style.overflow = '';
     }
 
@@ -901,8 +999,8 @@ const mobileIconBtnClass =
   }
 
   function initSiteHeader() {
-    const header = document.querySelector('[data-site-header]');
-    if (!(header instanceof HTMLElement) || header.dataset.headerInitialized === 'true') return;
+    const header = document.querySelector('[data-site-header]') as HTMLElement | null;
+    if (!header || header.dataset.headerInitialized === 'true') return;
     header.dataset.headerInitialized = 'true';
 
     const progressBar = header.querySelector('[data-scroll-progress]');
@@ -925,6 +1023,7 @@ const mobileIconBtnClass =
     const SCROLL_THRESHOLD = 200;
 
     function update() {
+      if (!header) return;
       const approaching = isHome ? window.scrollY > APPROACH_THRESHOLD : true;
       const scrolled = isHome ? window.scrollY > SCROLL_THRESHOLD : true;
       header.dataset.approaching = approaching ? 'true' : 'false';

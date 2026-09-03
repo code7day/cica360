@@ -37,7 +37,7 @@ El token es un **personal access token de Sanctum**, generado desde Console (`co
 
 | Ability | Para qué sirve | Uso en este proyecto |
 |---|---|---|
-| `content:read` | Todos los endpoints `GET` (pages, posts, menus, sliders, media) | Token de **build time** (`STAMLESS_API_TOKEN` en `.env`/secrets de CI) — nunca llega al navegador, ver `../ARCHITECTURE.md` §3 |
+| `content:read` | Todos los endpoints `GET` (pages, posts, services, menus, sliders, media) | Token de **build time** (`STAMLESS_API_TOKEN` en `.env`/secrets de CI) — nunca llega al navegador, ver `../ARCHITECTURE.md` §3 |
 | `forms:submit` | `POST forms/{slug}/submit` | Usado por el proxy PHP (server-side) o, si aplica el fallback, por un token acotado expuesto solo con esta ability — ver ADR-002 |
 
 **Regla de este proyecto**: el token de `content:read` **jamás** debe terminar en el bundle del cliente ni en el repo — vive únicamente en variables de entorno del proceso de build. Si en algún momento se necesita un token en el cliente (fallback del formulario), ese token debe tener **únicamente** `forms:submit`, generado aparte.
@@ -273,9 +273,77 @@ Detalle completo de un post.
 
 `content` acá es HTML ya renderizado (no bloques) — se inyecta directo en el layout de post.
 
+### `GET /services` (agregado 2026-09-02)
+
+Lista servicios publicados, paginada, orden `sort_order`. Mismo patrón exacto que `GET /posts`. El listado `/servicios` del sitio NO consume este endpoint — lo sirve una `Page` normal (tipo estándar) con un bloque `services_grid`, vía `GET /pages/servicios`; este endpoint solo lo usa `getStaticPaths` de la página de detalle (`/servicios/{slug}`).
+
+- **Abilities**: `content:read`
+- **Query params**: `per_page`
+
+```json
+{
+  "success": true, "status_code": 200,
+  "data": [
+    {
+      "uuid": "0199b1a1-...", "slug": "seguros-de-vida", "pretitle": null,
+      "title": "Seguros de vida", "subtitle": "...",
+      "countries": [{ "iso": "UY", "name": "Uruguay" }],
+      "image": null
+    }
+  ],
+  "meta": { "current_page": 1, "per_page": 15, "total": 12, "last_page": 1 },
+  "links": { "first": "...", "prev": null, "next": null, "last": "..." }
+}
+```
+
+### `GET /services/{slug}` (agregado 2026-09-02)
+
+Detalle completo de un servicio.
+
+- **Abilities**: `content:read`
+- **Response `404`** si no existe o no está publicado.
+
+```json
+{
+  "success": true, "status_code": 200,
+  "data": {
+    "uuid": "0199b1a1-...", "slug": "seguros-de-vida", "pretitle": null,
+    "title": "Seguros de vida", "subtitle": "...",
+    "countries": [{ "iso": "UY", "name": "Uruguay" }],
+    "content": {
+      "intro": "...",
+      "offers": [{ "highlight": "...", "text": "..." }],
+      "coverages": [{ "label": "...", "intro": "...", "items": ["..."] }],
+      "why_choose_us": "...",
+      "tip": "..."
+    },
+    "meta": { "seo_title": "...", "seo_description": "..." },
+    "links": [], "properties": {},
+    "published_at": "2026-08-13T00:00:00.000000Z", "image": null
+  }
+}
+```
+
+`content` acá SÍ es un objeto estructurado (no HTML renderizado como en `posts`) — `intro`/`offers`/`coverages`/`why_choose_us`/`tip` son todos opcionales, puede llegar `{}` si el servicio no cargó ese contenido en Studio. Consumido en `src/pages/servicios/[slug].astro`.
+
+### `GET /testimonials` (agregado 2026-09-02, no consumido por este repo todavía)
+
+Catálogo standalone de testimonios visibles, paginado, orden `sort_order`. Sin `GET /testimonials/{algo}` — el modelo no tiene `slug`, siempre se consume como colección completa. **Este repo no llama a este endpoint** — los testimonios que se muestran en el sitio (bloque `testimonials` de una Página) siguen llegando embebidos dentro de `content.items[]` de `GET /pages/{slug}` (ver la sección de bloques más arriba), que ya trae el mismo shape resuelto. Este endpoint queda disponible del lado del backend por si en el futuro hace falta una sección "Casos de éxito" standalone fuera del contexto de una página — sin caso de uso real hoy.
+
+```json
+{
+  "success": true, "status_code": 200,
+  "data": [
+    { "uuid": "0199c2a1-...", "name": "María Fernández", "role": "Clienta desde 2019", "quote": "...", "avatar": null }
+  ],
+  "meta": { "current_page": 1, "per_page": 15, "total": 6, "last_page": 1 },
+  "links": { "first": "...", "prev": null, "next": null, "last": "..." }
+}
+```
+
 ### `GET /menus/{slug}`
 
-Menú con items activos, en árbol (`children` anidados hasta un nivel). Slug real: `menu-principal`.
+Menú con items activos, en **árbol recursivo** — cada item trae su propio `children[]` con el MISMO shape, y cada hijo puede a su vez traer más `children[]`, sin límite de profundidad del lado de la API (`MenuController::buildTree()` en `genesis` arma el árbol completo en memoria de un único query, cero queries extra sin importar la profundidad). Console (`MenuTreeBuilder`, editor drag-and-drop estilo WordPress agregado 2026-09-02, ver `genesis` ADR-045) limita la CREACIÓN a 3 niveles (menú → submenú → sub-submenú), pero el contrato de este endpoint no está atado a ese número — renderizar `items` con una función recursiva (`renderMenuItem(item)` que se vuelve a llamar por cada `item.children`) es más robusto que hardcodear "hasta 2 `<nav>` anidados" en `Header.astro`. Slug real: `menu-principal`.
 
 - **Abilities**: `content:read`
 - **Response `404`** si no existe.
@@ -287,16 +355,31 @@ Menú con items activos, en árbol (`children` anidados hasta un nivel). Slug re
     "uuid": "0199a3a1-...", "name": "Menú principal", "slug": "menu-principal",
     "items": [
       { "uuid": "0199a3a2-...", "title": "Inicio", "type": "page", "href": "/", "is_home": true, "target": "_self", "sort_order": 0, "children": [] },
-      { "uuid": "0199a3a3-...", "title": "Servicios", "type": "page", "href": "/servicios", "is_home": false, "target": "_self", "sort_order": 2, "children": [] },
+      {
+        "uuid": "0199a3a3-...", "title": "Servicios", "type": "page", "href": "/servicios", "is_home": false, "target": "_self", "sort_order": 2,
+        "children": [
+          {
+            "uuid": "0199a3a5-...", "title": "Seguros de vida", "type": "service", "href": "/servicios/seguros-de-vida", "is_home": false, "target": "_self", "sort_order": 0,
+            "children": [
+              { "uuid": "0199a3a6-...", "title": "Cobertura familiar", "type": "external", "href": "https://ejemplo.com/familia", "is_home": false, "target": "_blank", "sort_order": 0, "children": [] }
+            ]
+          },
+          { "uuid": "0199a3a7-...", "title": "Seguros de auto", "type": "service", "href": "/servicios/seguros-de-auto", "is_home": false, "target": "_self", "sort_order": 1, "children": [] }
+        ]
+      },
       { "uuid": "0199a3a4-...", "title": "Consultar ahora", "type": "page", "href": "/contacto", "is_home": false, "target": "_self", "sort_order": 4, "children": [] }
     ]
   }
 }
 ```
 
-`href` viene resuelto por el backend (`/` para la home, `/{slug}` para pages, `/blog/{slug}` para posts, URL cruda para `external`/`custom`) — **no reconstruirlo a mano en el front**.
+Un item con submenú se identifica simplemente porque `children.length > 0` — no hay ningún campo `has_children`/`depth` separado.
 
-`is_home` (agregado 2026-08-30): booleano resuelto por el backend desde `Page.is_home` — **siempre `false`** para items `post`/`external`/`custom`. Úsalo para decidir si un item de menú es "el link a Home" (por ejemplo, para excluirlo del navbar porque el logo ya enlaza a `/`) en vez de comparar `href === '/'` a mano: el item puede tener un título o slug distinto de "home" y seguir apuntando a la página marcada como home.
+`type` (agregado 2026-09-02): `"page" | "post" | "service" | "external" | "custom"` — `"service"` es nuevo, agregado junto con el endpoint `GET /services`/`/services/{slug}` de arriba, resuelve `href` como `/servicios/{slug}`.
+
+`href` viene resuelto por el backend (`/` para la home, `/{slug}` para pages, `/blog/{slug}` para posts, `/servicios/{slug}` para services, URL cruda para `external`/`custom`) — **no reconstruirlo a mano en el front**.
+
+`is_home` (agregado 2026-08-30): booleano resuelto por el backend desde `Page.is_home` — **siempre `false`** para items `post`/`service`/`external`/`custom`. Úsalo para decidir si un item de menú es "el link a Home" (por ejemplo, para excluirlo del navbar porque el logo ya enlaza a `/`) en vez de comparar `href === '/'` a mano: el item puede tener un título o slug distinto de "home" y seguir apuntando a la página marcada como home.
 
 ### `GET /sliders/{slug}`
 

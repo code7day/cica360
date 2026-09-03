@@ -1,0 +1,105 @@
+---
+import type { GetStaticPaths } from 'astro';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getAllServices, getService } from '../../lib/api';
+
+/**
+ * Detalle público de un `Service` (2026-09-02, ver ADR-044) — primera vez
+ * que un servicio tiene su propia URL (antes solo existía como card
+ * dentro del bloque `services_grid` de la página `/servicios`, que sigue
+ * existiendo tal cual en `src/pages/[slug].astro` — OJO: por eso esta
+ * ruta vive en `servicios/[slug].astro`, NO se crea un `servicios/
+ * index.astro` acá, porque `/servicios` ya lo sirve esa página vía
+ * bloques; crear un `index.astro` acá lo taparía).
+ *
+ * Nivel de terminado visual: igual al de `blog/[slug].astro` (stub
+ * funcional con Tailwind genérico, no un rediseño pixel-perfect del
+ * mockup de referencia) — la maquetación fina de "¿Qué ofrecemos?"/
+ * "Coberturas" queda para una pasada de diseño aparte (ver CLAUDE.md de
+ * este repo: estilos visuales de bloques son de Antigravity/Gemini; esto
+ * es una página nueva, no un bloque, pero se mantiene el mismo criterio
+ * de "funcional primero" para no invadir ese trabajo a medias).
+ */
+export const getStaticPaths = (async () => {
+  const services = await getAllServices();
+  return services.map((service) => ({ params: { slug: service.slug } }));
+}) satisfies GetStaticPaths;
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  throw new Error('[pages/servicios/[slug].astro] Falta el parámetro slug.');
+}
+
+const service = await getService(slug);
+const { content } = service;
+---
+
+<BaseLayout title={service.title} description={service.meta?.seo_description ?? content.intro}>
+  <article class="mx-auto max-w-3xl px-4 py-16">
+    {service.image?.url && (
+      <img src={service.image.url} alt={service.image.alt_text ?? ''} class="mb-8 w-full rounded" />
+    )}
+
+    {service.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{service.pretitle}</p>}
+    <h1 class="text-4xl font-bold">{service.title}</h1>
+    {service.subtitle && <p class="mt-2 text-lg text-gray-600">{service.subtitle}</p>}
+
+    {service.countries.length > 0 && (
+      <ul class="mt-4 flex flex-wrap gap-2">
+        {service.countries.map((country) => (
+          <li class="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">{country.name}</li>
+        ))}
+      </ul>
+    )}
+
+    {content.intro && <p class="mt-8 text-lg leading-relaxed">{content.intro}</p>}
+
+    {content.offers && content.offers.length > 0 && (
+      <section class="mt-10">
+        <h2 class="text-2xl font-semibold">¿Qué ofrecemos?</h2>
+        <ul class="mt-4 flex flex-col gap-3">
+          {content.offers.map((offer) => (
+            <li class="flex gap-2">
+              <span aria-hidden="true">✓</span>
+              <p><strong>{offer.highlight}</strong> {offer.text}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    {content.coverages && content.coverages.length > 0 && (
+      <section class="mt-10">
+        <h2 class="text-2xl font-semibold">Coberturas</h2>
+        <div class="mt-4 flex flex-col gap-2">
+          {content.coverages.map((coverage) => (
+            <details class="rounded border border-gray-200 p-4">
+              <summary class="cursor-pointer font-medium">{coverage.label}</summary>
+              {coverage.intro && <p class="mt-2 text-sm text-gray-600">{coverage.intro}</p>}
+              {coverage.items.length > 0 && (
+                <ul class="mt-2 list-disc pl-5 text-sm text-gray-600">
+                  {coverage.items.map((item) => <li>{item}</li>)}
+                </ul>
+              )}
+            </details>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {content.why_choose_us?.text && (
+      <section class="mt-10">
+        <h2 class="text-2xl font-semibold">{content.why_choose_us.title ?? '¿Por qué elegirnos?'}</h2>
+        <p class="mt-4 text-gray-600">{content.why_choose_us.text}</p>
+      </section>
+    )}
+
+    {content.tip?.text && (
+      <aside class="mt-10 rounded border border-gray-200 bg-gray-50 p-6">
+        {content.tip.title && <p class="font-semibold">{content.tip.title}</p>}
+        <p class="mt-1 text-gray-600">{content.tip.text}</p>
+      </aside>
+    )}
+  </article>
+</BaseLayout>

@@ -1,7 +1,19 @@
 ---
 /**
  * Footer — scaffold funcional (sin diseño visual final, ver TASK.md Fase 2).
- * Mismo contrato que Header.astro: recibe el menú ya resuelto, sin fetch propio.
+ * Mismo contrato que Header.astro: recibe el menú ya resuelto, sin fetch
+ * propio (el fetch vive en BaseLayout.astro, ver ese archivo).
+ *
+ * El contenido "pesado" del pie de página (CTA, logos, etc.) YA NO se
+ * resuelve acá ni con un fetch global fijo a un slug — ese mecanismo
+ * (`getPage('footer-principal')` en BaseLayout.astro) fue REEMPLAZADO
+ * (2026-09-01, pedido explícito del Tech Lead) por el bloque `footer` de
+ * Filament: cada Página/Landing agrega ese bloque y elige a qué Content
+ * tipo `Footer` se asocia (`content.footer_page_id`), y `BlockRenderer` lo
+ * resuelve como un bloque más dentro de `page.blocks` (ver
+ * `FooterBlock.astro`). Por eso ese contenido termina renderizado DENTRO
+ * de `<main>` (como el resto de los bloques de la página), justo arriba de
+ * este `<footer>`, que ahora vuelve a ser solo la nav + copyright fijos.
  */
 import type { Menu } from '../lib/types';
 
