@@ -1,5 +1,7 @@
 # CICA360 (front) — Tarea actual
 
+> **📖 Ver `docs/context/HOME_INTEGRATION.md` antes de tocar cualquier bloque del Home** (Hero/RichText/Split/Testimonials/Logos/Cta/Colophon/FooterBottom) — resumen curado de la arquitectura, los patrones establecidos (carousel dinámico con `itemsPerView` + wraparound por clones, `content_width`, `background_type`) y el historial de bugs ya resueltos, para no repetirlos. El Home quedó confirmado por el Tech Lead 2026-09-02 como fiel al diseño de Figma ("quedó todo el HOME integrado tal cual el diseño de figma como espectativa").
+>
 > Última actualización: 2026-09-02 (**Finalizada la integración con la página HOME y todos sus bloques**) — `npm run check` verificado en verde sobre 34 archivos (0 errores, 0 warnings, 0 hints).
 > Owner actual: _(libre)_
 > Estado: **Integración con HOME completada.**
