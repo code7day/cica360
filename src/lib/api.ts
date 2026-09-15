@@ -12,6 +12,7 @@ import type {
   PostSummary,
   Service,
   ServiceSummary,
+  SiteTracking,
   Slider,
 } from './types';
 /**
@@ -348,6 +349,16 @@ export function getMedia(uuid: string): Promise<Media> {
   return requestApi<Media>(`/media/${encodeURIComponent(uuid)}`);
 }
 
+/**
+ * 2026-09-13 (ver genesis ADR-066): config de SITIO completo, no de una
+ * página puntual — IDs de Meta Pixel / Google Tag Manager cargados en
+ * Preferencias > Integraciones. Consumido una sola vez por
+ * `BaseLayout.astro`, igual que `getMenu()`.
+ */
+export function getSiteTracking(): Promise<SiteTracking> {
+  return requestApi<SiteTracking>('/settings/tracking');
+}
+
 // ---------------------------------------------------------------------------
 // Formulario de contacto — SEGURO para usar desde una isla de cliente.
 // No usa STAMLESS_API_TOKEN: pega contra el endpoint público configurado
@@ -408,5 +419,44 @@ export async function submitContactForm(
       success: false,
       message: 'No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.',
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Geolocalización por IP (ADR-004) — SOLO para preseleccionar el país del
+// formulario de contacto por UX. Nunca toca IPINFO_API_TOKEN (ese vive
+// server-side en ipinfo.config.php): pega contra PUBLIC_IPINFO_ENDPOINT, el
+// proxy PHP (`/ipinfo.php` por defecto).
+// ---------------------------------------------------------------------------
+
+/**
+ * 2026-09-12, pedido del Tech Lead: "para poder preseleccionar por default
+ * el pais al cargar la pagina, asi se ayuda, por usabilidad". Falla SIEMPRE
+ * en silencio (devuelve `null`) — es una mejora de UX, nunca debe bloquear
+ * ni demorar perceptiblemente el formulario si ipinfo.io no responde. Timeout
+ * corto propio (no depende del default del navegador) vía `AbortController`.
+ */
+export async function detectVisitorCountry(): Promise<string | null> {
+  const endpoint = import.meta.env.PUBLIC_IPINFO_ENDPOINT || '/ipinfo.php';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const body = (await response.json()) as { success?: boolean; country_code?: string | null };
+    return typeof body.country_code === 'string' ? body.country_code.toUpperCase() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }

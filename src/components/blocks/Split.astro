@@ -157,8 +157,16 @@ const gridAlignClass = hasTextBackground ? 'items-stretch' : 'items-center';
 // CTA se vea igual sin importar en qué bloque aparezca.
 const LINK_STYLE_CLASSES: Record<string, string> = {
   primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  // 2026-09-11: REVERTIDO — la regla "default blanco → hover cicagold-500"
+  // aplica a botones OUTLINE sobre fondo de color, no a este `secondary`
+  // (relleno sólido). Vuelve al valor original.
   secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
-  outline: 'border-cicaindigo-500 bg-transparent text-cicaindigo-500 hover:bg-cicaindigo-500 hover:text-white',
+  // 2026-09-11 (pedido del Tech Lead, con captura del design system real:
+  // "cuando son secundarios es asi los hovers segun designsystem", luego
+  // aclarado: "si default: cicaindigo al hover es: cicagold-600" — border
+  // Y texto, uniforme, no dos tonos) — ver `RichText.astro` para el
+  // detalle completo del cambio.
+  outline: 'border-cicaindigo-500 bg-transparent text-cicaindigo-500 hover:border-cicagold-600 hover:text-cicagold-600',
   text: 'border-transparent bg-transparent text-cicaindigo-500 underline-offset-4 hover:underline',
 };
 
@@ -181,11 +189,18 @@ const LINK_STYLE_CLASSES: Record<string, string> = {
 // arriba de `3md`, no hay otro breakpoint que lo suba de nuevo).
 // A partir de 1440px (`2xl`) el Tech Lead pidió alinear al valor exacto del
 // dev-mode de Figma (36px), y subir un poco más pasado 1700px (`5xl`, 40px).
-const TITLE_RESPONSIVE_CLASS =
-  'text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]';
+// CORRECCIÓN 2026-09-09 (pedido del Tech Lead, aplicado por igual a TODOS
+// los blocks con heading — ver mismo comentario en `RichText.astro`):
+// "en esta resolucion probemos con todos los heading usar la misma
+// configuracion de paso reducir el LEADING en pretitle, title, subtitle
+// minimas recomendadas para esa resolucion" — por debajo de `xs` (414px),
+// título baja a `leading-tight` (1.25), subtítulo a `leading-snug`
+// (1.375); desde `xs` en adelante ambos vuelven al interlineado normal
+// por defecto de cada `text-*`.
+const TITLE_RESPONSIVE_CLASS = 'text-2xl font-bold leading-tight xs:leading-normal sm:text-3xl 4md:text-4xl';
 // Subtítulo: mismo criterio — desde `md` en adelante queda en `text-base`
 // ("medio"), ya no vuelve a `text-lg` en `3md` (antes sí).
-const SUBTITLE_RESPONSIVE_CLASS = 'text-lg font-light text-gray-500 md:text-base';
+const SUBTITLE_RESPONSIVE_CLASS = 'text-lg leading-snug font-light text-gray-500 md:text-base xs:leading-normal';
 // NOTA: `@tailwindcss/typography` no está instalado en este proyecto (sin
 // `prose-sm`/`prose-base` reales, `prose` es un no-op acá — confirmado:
 // no está en `package.json` ni hay `@plugin`/`.prose` custom en
@@ -284,7 +299,7 @@ const mediaStyle = mediaEffectStyle(properties);
         class={`flex flex-col justify-center gap-4 ${mediaOnRight ? 'md:order-1' : ''} ${textPaddingClass}`}
         style={textBackgroundStyle}
       >
-        {block.pretitle && <p class="text-cicagold-600 text-sm font-light tracking-[0.2em] uppercase">{block.pretitle}</p>}
+        {block.pretitle && <p class="text-cicagold-600 text-sm leading-tight font-light tracking-[0.2em] uppercase xs:leading-normal">{block.pretitle}</p>}
         {block.title && <h2 class={`text-cicaindigo-500 ${TITLE_RESPONSIVE_CLASS}`}>{block.title}</h2>}
         {block.subtitle && <p class={SUBTITLE_RESPONSIVE_CLASS}>{block.subtitle}</p>}
         {content.body && <div class={`split-body ${BODY_RESPONSIVE_CLASS}`} set:html={content.body} />}

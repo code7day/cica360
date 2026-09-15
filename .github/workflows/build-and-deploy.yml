@@ -31,17 +31,31 @@ jobs:
           PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
           PUBLIC_CONTACT_FORM_ENDPOINT: /contacto.php
 
+      # 2026-09-13 (decisión del Tech Lead, ver PROGRESS.md/ARCHITECTURE.md
+      # §6): el deploy queda MANUAL vía cPanel por ahora (no FTP scriptado)
+      # — "se debería compilar aquí y con un proceso manual un zip, se suba
+      # los archivos a cPanel". Este artifact YA ES ese zip: GitHub Actions
+      # empaqueta el contenido de `dist/` (sin la carpeta `dist` en sí, los
+      # archivos quedan en la RAÍZ del zip al descargarlo) — se baja desde
+      # la página del run ("Artifacts" → `cica360-dist`) y se sube/extrae
+      # tal cual en el File Manager de cPanel, en el document root del
+      # dominio. `.env` (credenciales reales de `contacto.php`/`ipinfo.php`,
+      # ver `public/_env.php`) vive un nivel POR ENCIMA del document root a
+      # propósito — la extracción del zip nunca lo toca ni lo pisa, se
+      # configura una sola vez en el servidor y sobrevive a cada redeploy.
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
+          name: cica360-dist
           path: dist/
           retention-days: 7
 
-      # --- Deploy ---
-      # Deshabilitado hasta confirmar credenciales reales del hosting (ver
-      # docs/context/CURRENT_STATE.md, bloqueador "tipo de shared hosting").
-      # Descomentar y configurar los secrets FTP_SERVER/FTP_USERNAME/
-      # FTP_PASSWORD en Settings -> Secrets del repo una vez confirmados.
+      # --- Deploy automático (FTP) ---
+      # NO en uso — decisión explícita de mantener el paso a producción
+      # manual mientras el contenido cambia seguido (pre-lanzamiento). Se
+      # deja el snippet acá por si más adelante se quiere automatizar (una
+      # vez el equipo esté cómodo con la cadencia de publicación): requeriría
+      # configurar los secrets FTP_SERVER/FTP_USERNAME/FTP_PASSWORD en
+      # Settings -> Secrets del repo.
       #
       # - name: Deploy a shared hosting (FTP)
       #   uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -51,6 +65,3 @@ jobs:
       #     password: ${{ secrets.FTP_PASSWORD }}
       #     local-dir: ./dist/
       #     server-dir: ./
-      #     # No borrar contacto.config.php del servidor en cada deploy:
-      #     exclude: |
-      #       **/contacto.config.php

@@ -1,0 +1,302 @@
+---
+/**
+ * Grid de Casos de Éxito (`testimonials_grid`) — bloque nuevo 2026-09-11,
+ * pedido explícito del Tech Lead con captura de mockup de la página "Casos
+ * de éxito" (grid 3×3 de tarjetas blancas con avatar circular, frase, firma
+ * y un botón "MÁS CASOS" con ícono de ojo debajo): "es un bloque de
+ * testimonios que creamos a modo preview o resumen solo para home u otras
+ * paginas, pero este tiene que ser un bloque nuevo especial como el de
+ * servicios, donde va el heading y luego la configuracion todo igual al de
+ * servicios en el admin. luego la integracion en astro tiene que ser con
+ * ese mismo aspecto de la espectativa de diseño".
+ *
+ * Es al bloque `testimonials` (teaser/preview, carousel si hay más de 3, ver
+ * ese archivo) lo que `ServicesGrid.astro` es a un hipotético teaser de
+ * servicios: el MISMO dataset (`content.items[]` ya resuelto por el backend
+ * contra la tabla real `testimonials`, ver `ResolvesPublicLinks` en
+ * genesis), pero como CATÁLOGO COMPLETO — grid estático 1/2/3 columnas
+ * (nunca un carousel, mismo criterio explícito ya aplicado a
+ * `ServicesGrid.astro`: "aquí es modo grid"), con paginación "Ver más" 100%
+ * client-side sobre datos ya horneados en build (mismo mecanismo EXACTO que
+ * `ServicesGrid.astro` — mismo motivo: sitio 100% estático, sin servidor
+ * Node en producción, token del API solo en build time, ver
+ * CLAUDE.md/ARCHITECTURE.md).
+ *
+ * La ESTRUCTURA de sección (fondo/padding_y + `BlockHeading` centrado +
+ * contenido) es la misma que el resto de bloques con heading compartido —
+ * copiada 1:1 de `ServicesGrid.astro`. La TARJETA (avatar circular, frase en
+ * itálica, firma "— Nombre") reusa el diseño ya validado de
+ * `Testimonials.astro` (ADR-033) — mismo `initials()`/`shortName()`, sin el
+ * `item_background_color` con mezcla de opacidad de esa card (acá el mockup
+ * pide tarjetas blancas simples con sombra, no un color de marca por
+ * tarjeta).
+ *
+ * Sin chips de filtro (a diferencia de `ServicesGrid.astro`): un testimonio
+ * no tiene país ni ninguna otra faceta obvia para filtrar por ahora — si el
+ * Tech Lead pide uno a futuro (ej. por rubro), agregar acá mismo criterio
+ * que los chips de país de `ServicesGrid.astro`.
+ */
+import type { Block, ContentLink, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
+import { Icon } from 'astro-icon/components';
+import BlockHeading from './BlockHeading.astro';
+
+/**
+ * Mismo shape que ya resuelve el backend para `testimonials` (teaser) más
+ * `uuid` (nuevo en `testimonials_grid`, ver `ResolvesPublicLinks` — sirve de
+ * key estable acá, un testimonio no tiene slug/href propio como sí tiene
+ * `services_grid`, no hay página de detalle por caso de éxito).
+ */
+interface TestimonialGridItem {
+  uuid: string;
+  name?: string;
+  role?: string | null;
+  quote?: string;
+  avatar?: Media | null;
+}
+
+interface Props {
+  block: Block;
+}
+
+const { block } = Astro.props;
+
+const content = block.content as { items?: TestimonialGridItem[]; background_image?: Media | null };
+const items = content.items ?? [];
+
+interface TestimonialsGridProperties extends BackgroundColorProperties {
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Declarada en `PropertiesSchema` (genesis), sin consumidor real acá — mismo caso que `animation` en `ServicesGrid.astro`/`Features.astro`. */
+  animation?: 'none' | 'fade' | 'slide-up' | null;
+  show_link?: boolean;
+  /** 2026-09-11 — imagen de fondo de la sección, mismo patrón que `ServicesGrid.astro`/`Features.astro`. */
+  media_blend_mode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
+}
+
+const properties = (block.properties as TestimonialsGridProperties) ?? {};
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : ''].join(' ').trim();
+
+/** Mismos 6 filtros CSS + opacidad + blend mode que `ServicesGrid.astro`/`Features.astro` (`properties.media_*`, set genérico). */
+function backgroundImageEffectStyle(props: TestimonialsGridProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
+
+// Mismo criterio de padding que `ServicesGrid.astro` (top reducido, sin
+// tocar el respiro inferior) — la página "Casos de éxito" comparte el mismo
+// wave/decorador del banner superior, mismo motivo exacto.
+const PADDING_Y_CLASSES: Record<NonNullable<TestimonialsGridProperties['padding_y']>, string> = {
+  sm: 'pt-[20px] pb-10 3md:pt-[36px] 3md:pb-14',
+  md: 'pt-[36px] pb-14 3md:pt-[60px] 3md:pb-20',
+  lg: 'pt-[28px] pb-12 lg:pt-[60px] lg:pb-20',
+  xl: 'pt-[60px] pb-20 3md:pt-[108px] 3md:pb-32',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+const link: ContentLink | undefined = block.links?.[0];
+const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean(link?.label);
+
+/** Mismo mapa de estilos de botón que `ServicesGrid.astro`/`RichText.astro` — sin reinventar. */
+const LINK_STYLE_CLASSES: Record<string, string> = {
+  primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  // 2026-09-11: REVERTIDO — la regla "default blanco → hover cicagold-500"
+  // aplica a botones OUTLINE sobre fondo de color, no a este `secondary`
+  // (relleno sólido). Vuelve al valor original.
+  secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
+  // 2026-09-11 (pedido del Tech Lead, con captura del design system real:
+  // "cuando son secundarios es asi los hovers segun designsystem", luego
+  // aclarado: "si default: cicaindigo al hover es: cicagold-600") — ver
+  // `RichText.astro` para el detalle completo del cambio.
+  outline: 'border-cicaindigo-500 bg-transparent text-cicaindigo-500 hover:border-cicagold-600 hover:text-cicagold-600',
+  text: 'border-transparent bg-transparent text-cicaindigo-500 underline-offset-4 hover:underline',
+};
+const linkStyleClass = LINK_STYLE_CLASSES[link?.type ?? 'outline'] ?? LINK_STYLE_CLASSES.outline;
+
+/**
+ * "MÁS CASOS" de a 6 — mismo mecanismo EXACTO que "Más servicios" de
+ * `ServicesGrid.astro` (ver ese archivo para el detalle completo del
+ * porqué): el estado inicial se decide en build time (`index >=
+ * INITIAL_VISIBLE`), el `<script>` de abajo toma el control desde ahí,
+ * 100% client-side sobre el HTML ya horneado.
+ */
+const INITIAL_VISIBLE = 6;
+const STEP = 6;
+const showLoadMore = items.length > INITIAL_VISIBLE;
+
+/** Iniciales como fallback de avatar (sin foto real cargada) — copiado de `Testimonials.astro`. */
+function initials(name?: string): string {
+  if (!name) return '';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+/** "María Fernanda Silva" → "María F." — copiado de `Testimonials.astro`. */
+function shortName(name?: string): string {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? '';
+
+  return `${parts[0]} ${parts[1][0]!.toUpperCase()}.`;
+}
+---
+
+<section class="relative w-full" style={sectionStyle || undefined} data-testimonials-grid>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
+
+  <div class={`relative z-10 mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 sm:px-6 lg:px-8 ${paddingYClass}`}>
+    <BlockHeading
+      pretitle={block.pretitle}
+      title={block.title}
+      subtitle={block.subtitle}
+      wrapperClass="mx-auto flex w-full flex-col items-center gap-1 text-center"
+      pretitleColorClass="text-cicagold-600"
+      titleColorClass="text-cicaindigo-500"
+      subtitleColorClass="text-gray-500"
+    />
+
+    {
+      /*
+      `flex flex-wrap justify-center` en vez de `grid grid-cols-3` (2026-09-11,
+      mismo pedido/criterio que `ServicesGrid.astro` — ver ese archivo para
+      el detalle completo): un CSS Grid de columnas fijas siempre alinea la
+      última fila incompleta a la izquierda; Flexbox con ancho fijo por item
+      + `justify-content: center` centra esa fila como grupo cuando el total
+      de testimonios no es múltiplo de 3.
+      */
+    }
+    <div class="flex flex-wrap justify-center gap-6" data-testimonials-track>
+      {
+        items.map((item, index) => (
+          <blockquote
+            class="flex w-full flex-col items-center gap-6 rounded-2xl bg-white p-8 text-center shadow-lg sm:w-[calc(50%-12px)] sm:p-10 lg:w-[calc(33.333%-16px)]"
+            data-testimonials-item
+            style={index >= INITIAL_VISIBLE ? 'display: none;' : undefined}
+          >
+            {item.avatar?.url ? (
+              <img
+                src={item.avatar.url}
+                alt={item.avatar.alt_text ?? item.name ?? ''}
+                class="h-24 w-24 rounded-full object-cover sm:h-28 sm:w-28"
+                loading="lazy"
+              />
+            ) : (
+              <span class="bg-cicagold-500/10 text-cicaindigo-500 flex h-24 w-24 items-center justify-center rounded-full text-xl font-bold sm:h-28 sm:w-28" aria-hidden="true">
+                {initials(item.name)}
+              </span>
+            )}
+            <p class="text-base text-gray-600 italic">{item.quote}</p>
+            <footer class="flex flex-col items-center gap-1">
+              <p class="text-cicaindigo-500 font-semibold italic">— {shortName(item.name)}</p>
+              {item.role && <p class="text-sm text-gray-500 italic">{item.role}</p>}
+            </footer>
+          </blockquote>
+        ))
+      }
+    </div>
+
+    {
+      showLoadMore && (
+        <div class="flex w-full justify-center">
+          {
+            /* Hover: 2026-09-11 (mismo pedido/criterio que `ServicesGrid.astro`,
+            ver ese archivo) — border+texto a `cicagold-600`, fondo transparente. */
+          }
+          <button
+            type="button"
+            class="border-cicaindigo-500 text-cicaindigo-500 hover:border-cicagold-600 hover:text-cicagold-600 inline-flex cursor-pointer items-center gap-2 rounded-lg border px-6 py-2.5 text-sm font-bold tracking-[0.1em] uppercase transition"
+            data-testimonials-load-more
+          >
+            <Icon name="ph:eye" size={18} aria-hidden="true" />
+            Más casos
+            <Icon name="ph:caret-down" size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )
+    }
+
+    {
+      showLink && link && (
+        <div class="flex w-full justify-center">
+          <a
+            href={link.href ?? '#'}
+            target={link.target}
+            rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+            class={`inline-flex items-center justify-center gap-2 rounded-lg border px-6 py-2.5 text-sm font-bold tracking-[0.1em] uppercase transition ${linkStyleClass}`}
+          >
+            {link.label}
+            <Icon name="ph:plus" size={16} aria-hidden="true" />
+          </a>
+        </div>
+      )
+    }
+  </div>
+</section>
+
+<script>
+  /**
+   * "Más casos" de a 6 — 100% client-side sobre el HTML ya horneado en
+   * build (ver docblock del frontmatter). Scopeado por instancia de bloque
+   * (`data-testimonials-grid`) para soportar más de un `testimonials_grid`
+   * en la misma página sin que se pisen entre sí — mismo patrón EXACTO que
+   * `ServicesGrid.astro`, simplificado (sin filtros).
+   */
+  const STEP = 6;
+
+  document.querySelectorAll<HTMLElement>('[data-testimonials-grid]').forEach((section) => {
+    const items = Array.from(section.querySelectorAll<HTMLElement>('[data-testimonials-item]'));
+    const loadMoreBtn = section.querySelector<HTMLButtonElement>('[data-testimonials-load-more]');
+
+    let visibleCount = STEP;
+
+    function render(): void {
+      items.forEach((item, index) => {
+        item.style.display = index < visibleCount ? '' : 'none';
+      });
+
+      if (loadMoreBtn) {
+        loadMoreBtn.style.display = items.length > visibleCount ? '' : 'none';
+      }
+    }
+
+    loadMoreBtn?.addEventListener('click', () => {
+      visibleCount += STEP;
+      render();
+    });
+
+    render();
+  });
+</script>

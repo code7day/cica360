@@ -61,25 +61,26 @@
  * (`MAX_GRID_ITEMS` fijo en vez de `itemsPorVista` variable, pero la
  * fórmula del conteo es la misma: techo de total/paso).
  *
- * La diferencia real con `Testimonials.astro` es el "autocompletado con los
- * primeros items" de la última página: ahí se resuelve armando las páginas
- * en build time con índice circular (`items[(p*3+i) % items.length]`)
- * porque el track son divs armados a mano. Acá el track es scroll nativo
- * item por item (necesario porque `itemsPorVista` cambia por breakpoint, no
- * se puede pre-armar "la página" sin saber cuántos entran). La solución:
- * el script (ver más abajo) CLONA los primeros logos (hasta 7, el máximo de
- * la spec) y los agrega al final del track, ocultos (`aria-hidden`) pero
- * scrolleables — al llegar a la última página real (que puede venir
- * incompleta, ej. logos 9-10 con 4 visibles), el scroll nativo sigue
- * mostrando los clones (logo 1, logo 2...) para completar el ancho de la
- * página, sin dejar un hueco vacío ni cortar la fila. `itemsPorVista` ya no
- * se puede "contar" mirando cuántos items empiezan antes del scroll máximo
- * (eso era la ventana deslizante) — ahora se MIDE (ancho real del primer
- * logo vs. ancho del track) y de ahí sale tanto la cantidad de páginas como
- * el índice de item al que hay que saltar por cada página.
+ * `itemsPorVista` ya no se puede "contar" mirando cuántos items empiezan
+ * antes del scroll máximo (eso era la ventana deslizante) — ahora se MIDE
+ * (ancho real del primer logo vs. ancho del track) y de ahí sale tanto la
+ * cantidad de páginas como el índice de item al que hay que saltar por
+ * cada página.
+ *
+ * **REMOVIDO 2026-09-08**: hasta acá, el script clonaba los primeros
+ * logos (hasta 7, el máximo de la spec) y los pegaba al final del track
+ * para "autocompletar" una última página incompleta, con scroll/
+ * auto-avance dando la vuelta infinita. Pedido del Tech Lead ("revisar
+ * logos que no use wraparound infinito, no va creo"), mismo criterio ya
+ * aplicado a `Testimonials.astro` el mismo día. Se remueve la clonación
+ * por completo — la navegación pasa de wraparound (`% totalPages`) a
+ * CLAMP, y la última página, si queda con menos logos que
+ * `itemsPorVista`, se ve tal cual, sin autocompletar con duplicados.
  */
 import type { Block, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 import { Icon } from 'astro-icon/components';
+import BlockHeading from './BlockHeading.astro';
 
 interface LogoItem {
   media?: Media | null;
@@ -92,7 +93,7 @@ interface Props {
 
 const { block } = Astro.props;
 
-const content = block.content as { items?: LogoItem[] };
+const content = block.content as { items?: LogoItem[]; background_image?: Media | null };
 // `Array.isArray()` a propósito, no `content.items ?? []`: un array PHP con
 // keys no-secuenciales se serializa como objeto JS (`{}`), no `[]` — pasó
 // de verdad con contenido legado del bloque `logos` (2026-09-01, ver
@@ -101,8 +102,7 @@ const content = block.content as { items?: LogoItem[] };
 // tire `.filter is not a function` acá.
 const items = (Array.isArray(content.items) ? content.items : []).filter((item) => item.media?.url);
 
-interface LogosProperties {
-  background_color?: string | null;
+interface LogosProperties extends BackgroundColorProperties {
   padding_y?: 'sm' | 'md' | 'lg' | 'xl';
   /**
    * `content_width` (2026-09-01, pedido del Tech Lead): mismo property
@@ -116,8 +116,26 @@ interface LogosProperties {
    * de marcas que suele ir borde a borde.
    */
   content_width?: 'full' | 'boxed' | 'narrow';
+  /** Filtro aplicado a CADA logo (nivel de bloque) — no confundir con el filtro de la imagen de fondo de abajo, que NO reusa estos 2 campos a propósito (ver comentario del schema en genesis, `PageResource.php`, bloque `logos`). */
   media_filter_grayscale?: number | null;
   media_opacity?: number | null;
+  /**
+   * 2026-09-11 (pedido del Tech Lead: "todos deberian permitir personalizar
+   * el fondo en 3 tipos") — imagen de fondo de la SECCIÓN (opcional, capa
+   * intermedia sobre `background_color`). Deliberadamente SIN
+   * `media_opacity`/`media_filter_grayscale` en este set (esos 2 ya están
+   * tomados arriba para el filtro de cada logo, compartirían el mismo
+   * valor si se repitieran acá) — limitación conocida de este bloque en
+   * particular, no de los demás.
+   */
+  media_blend_mode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | null;
+  media_brightness?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
 }
 
 const properties = (block.properties as LogosProperties) ?? {};
@@ -149,11 +167,32 @@ const CONTENT_WIDTH_CLASSES: Record<'full' | 'boxed', string> = {
 const contentWidth = properties.content_width === 'boxed' ? 'boxed' : 'full';
 const contentWidthClass = CONTENT_WIDTH_CLASSES[contentWidth];
 
-const sectionStyle = properties.background_color ? `background-color: ${properties.background_color};` : '';
+const sectionStyle = resolveBackgroundStyle(properties);
 
 const logoGrayscale = Math.min(100, Math.max(0, properties.media_filter_grayscale ?? 0));
 const logoOpacity = Math.min(100, Math.max(0, properties.media_opacity ?? 100));
 const logoFilterStyle = `--logo-grayscale: ${logoGrayscale}%; --logo-opacity: ${logoOpacity}%;`;
+
+/**
+ * Filtros de la imagen de fondo de la SECCIÓN — sin `grayscale`/`opacity`
+ * propios (ver comentario de `LogosProperties` arriba: esos 2 ya están
+ * tomados por el filtro de cada logo en este bloque puntual).
+ */
+function backgroundImageEffectStyle(props: LogosProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
 
 /**
  * Ancho de cada logo por breakpoint — ver docblock arriba para la spec
@@ -172,17 +211,40 @@ const LOGO_ITEM_WIDTH_CLASS =
   'basis-full sm:basis-[calc(50%-1rem)] 2md:basis-[calc(33.333%-1.334rem)] 3lg:basis-[calc(25%-1.5rem)] 2xl:basis-[calc(16.667%-1.667rem)] 5xl:basis-[calc(14.286%-1.714rem)]';
 ---
 
-<section class="w-full" style={sectionStyle || undefined}>
-  <div class={`mx-auto flex flex-col items-center gap-8 ${contentWidthClass} ${paddingYClass}`}>
+<section class="relative w-full" style={sectionStyle || undefined}>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
+
+  <div class={`relative z-10 mx-auto flex flex-col items-center gap-8 ${contentWidthClass} ${paddingYClass}`}>
     {
-      (block.pretitle || block.title || block.subtitle) && (
-        <div class="flex w-full flex-col items-center gap-1 text-center">
-          {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
-          {block.title && <h2 class="3md:text-3xl w-full text-3xl font-bold sm:text-4xl md:text-2xl 2xl:text-4xl 5xl:text-[40px]">{block.title}</h2>}
-          {block.subtitle && <p class="w-full text-lg font-light opacity-90 md:text-base">{block.subtitle}</p>}
-        </div>
-      )
+      /* CORRECCIÓN 2026-09-10: markup movido a `BlockHeading.astro` (partial
+       * compartido — "todos los headings deberian ser... un solo partial
+       * component reutilizado"). A diferencia de `Testimonials.astro`, este
+       * bloque NO tiene fondo/color de texto propio sembrado (los 2 usos
+       * actuales solo configuran `media_filter_grayscale`/`media_opacity`,
+       * nada de `background_color`/`text_color`) — sección de fondo por
+       * defecto (clara), así que SÍ es seguro pasar los mismos colores de
+       * marca que ya usan `RichText`/`Features`. Cambio real de
+       * comportamiento: pretitle/subtítulo dejan de usar
+       * `opacity-80`/`opacity-90` (colores de marca explícitos en su
+       * lugar, mismo criterio pedido por el Tech Lead: "mejor se maneja
+       * con color"). */
     }
+    <BlockHeading
+      pretitle={block.pretitle}
+      title={block.title}
+      subtitle={block.subtitle}
+      wrapperClass="flex w-full flex-col items-center gap-1 text-center"
+      pretitleColorClass="text-cicagold-600"
+      titleColorClass="text-cicaindigo-500"
+      subtitleColorClass="text-gray-500"
+    />
 
     {
       items.length > 0 && (
@@ -215,9 +277,16 @@ const LOGO_ITEM_WIDTH_CLASS =
             ))}
           </div>
 
+          {
+            /* `cursor-pointer` (2026-09-10, pedido del Tech Lead: "en los
+            enlaces del navbar y donde exista un enlace o action deberia
+            de mostrarse el cursor-pointer") — estos `<button>` prev/next
+            no lo tenían; los `<button>` no reciben cursor de mano por
+            default en ningún navegador. */
+          }
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 left-0 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            class="text-cicagold-500 absolute top-1/2 left-0 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
             data-logos-prev
             aria-label="Logo anterior"
           >
@@ -225,7 +294,7 @@ const LOGO_ITEM_WIDTH_CLASS =
           </button>
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-10 w-10 translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-10 w-10 translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
             data-logos-next
             aria-label="Logo siguiente"
           >
@@ -246,8 +315,9 @@ const LOGO_ITEM_WIDTH_CLASS =
              * / itemsPorVista)`, avanzando de a `itemsPorVista` logos por
              * vez). Ejemplo real: 10 logos, 6 visibles a la vez → 2 páginas
              * (antes daba 5 puntos con la ventana deslizante, el bug
-             * reportado). La última página, si queda incompleta, se
-             * completa con logos clonados del principio (ver script).
+             * reportado). La última página, si queda incompleta, se ve
+             * tal cual (2026-09-08: ya no se autocompleta con logos
+             * clonados del principio — ver script, "REMOVIDO").
              */
           }
           <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Logos" data-logos-dots />
@@ -324,14 +394,17 @@ const LOGO_ITEM_WIDTH_CLASS =
   // runtime (`updateOverflow()`, comparando el ancho real del primer logo
   // contra el ancho del track) y se recalculan en cada resize.
   //
-  // Wraparound de la última página ("autocompletando con los primeros
-  // items", pedido explícito): como el track es scroll nativo item por
-  // item (no páginas pre-armadas como en `Testimonials.astro`), se clonan
-  // los primeros logos (hasta 7, el máximo de la spec) y se agregan al
-  // final del track, ocultos para lectores de pantalla (`aria-hidden`)
-  // pero scrolleables — al saltar a la última página real, si queda
-  // incompleta, el scroll nativo sigue mostrando los clones para completar
-  // el ancho de la página en vez de dejar un hueco vacío.
+  // 2026-09-08: SIN wraparound — antes clonaba los primeros logos y los
+  // pegaba al final del track para "autocompletar" una última página
+  // incompleta, con scroll/auto-avance dando la vuelta infinita
+  // (`page % totalPages`). Pedido del Tech Lead ("revisar logos que no
+  // use wraparound infinito, no va creo"), mismo criterio ya aplicado a
+  // `Testimonials.astro` (ver ese archivo, "corrige... la cantidad
+  // configurada en el admin... pero me estas devolviendo 5" — el loop se
+  // percibía como contenido duplicándose). Se remueve la clonación por
+  // completo; si la última página queda con menos logos que
+  // `itemsPerView`, se ve tal cual (con el espacio real que le
+  // corresponde), sin autocompletar con duplicados.
   function initLogosCarousels() {
     const roots = document.querySelectorAll('[data-logos-carousel]');
 
@@ -347,32 +420,9 @@ const LOGO_ITEM_WIDTH_CLASS =
 
       if (!(track instanceof HTMLElement) || realItems.length <= 1) return;
 
-      // Máximo de logos visibles a la vez según la spec del bloque (ver
-      // docblock del frontmatter: 1/2/3/4/6/7 según breakpoint) — el tope
-      // de cuántos logos hace falta clonar para que CUALQUIER página,
-      // en CUALQUIER breakpoint, pueda completarse con logos reales del
-      // principio (no clones de clones).
-      const MAX_ITEMS_PER_VIEW_SPEC = 7;
-      const cloneCount = Math.min(realItems.length, MAX_ITEMS_PER_VIEW_SPEC);
-      const clones: HTMLElement[] = [];
-      for (let i = 0; i < cloneCount; i++) {
-        const clone = realItems[i].cloneNode(true) as HTMLElement;
-        clone.removeAttribute('data-logos-item');
-        clone.dataset.logosClone = 'true';
-        clone.setAttribute('aria-hidden', 'true');
-        clone.setAttribute('tabindex', '-1');
-        // Los links clonados no deben ser alcanzables por teclado (son
-        // decorativos, el logo real ya es tabulable en su posición
-        // original) — sin esto un `<a>` clonado seguiría en el tab order.
-        clone.querySelectorAll('a').forEach((a) => a.setAttribute('tabindex', '-1'));
-        track.appendChild(clone);
-        clones.push(clone);
-      }
-      // `allItems` direcciona posiciones de scroll (reales + clones al
-      // final) — una página `p` empieza en el item real `p * itemsPerView`,
-      // que puede caer dentro de los clones cuando la última página real
-      // queda incompleta (eso es justamente el wraparound).
-      const allItems = [...realItems, ...clones];
+      // `allItems` direcciona posiciones de scroll — sin wraparound, son
+      // directamente los logos reales, ninguna copia.
+      const allItems = [...realItems];
 
       const intervalMs = 4000;
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -380,6 +430,13 @@ const LOGO_ITEM_WIDTH_CLASS =
       let current = 0;
       let timer: number | undefined;
       let resumeTimer: number | undefined;
+      // 2026-09-08 (mismo fix que `Testimonials.astro`, "el indicador dots
+      // no se actualiza... luego sigue su curso y marca otra cosa"): el
+      // dot activo solo se actualizaba en 3 lugares puntuales (click en un
+      // dot, `onPointerUp`, auto-avance) — un scroll que terminara por otra
+      // vía (momentum nativo tras soltar el dedo, trackpad/wheel) nunca lo
+      // tocaba. Ver `handleScrollSettled()` más abajo.
+      let scrollSyncTimer: number | undefined;
       let isOverflowing = false;
       // Cuántos logos entran a la vez en el viewport actual — medido en
       // `updateOverflow()`, cambia por breakpoint (ver spec en el
@@ -391,8 +448,12 @@ const LOGO_ITEM_WIDTH_CLASS =
       let totalPages = 1;
       let dots: Element[] = [];
 
+      // 2026-09-08: CLAMP en vez de wraparound (`% totalPages`) — sin
+      // clones al final del track, dar la vuelta no tiene a dónde
+      // "aterrizar" suave. La página pedida se topa en el último índice
+      // real y se queda ahí (mismo criterio que `Testimonials.astro`).
       function scrollToIndex(page: number) {
-        const next = ((page % totalPages) + totalPages) % totalPages;
+        const next = Math.max(0, Math.min(page, totalPages - 1));
         const itemIndex = Math.min(next * itemsPerView, allItems.length - 1);
         const target = allItems[itemIndex] as HTMLElement;
         track!.scrollTo({ left: target.offsetLeft - (track as HTMLElement).offsetLeft, behavior: 'smooth' });
@@ -412,16 +473,38 @@ const LOGO_ITEM_WIDTH_CLASS =
         timer = undefined;
       }
 
+      // 2026-09-08: el auto-avance se DETIENE al llegar a la última
+      // página en vez de dar la vuelta a la primera (antes, con
+      // wraparound, `scrollToIndex(current + 1)` + `% totalPages`
+      // producía el loop infinito).
       function start() {
         if (prefersReducedMotion || !isOverflowing) return;
         stop();
-        timer = window.setInterval(() => scrollToIndex(current + 1), intervalMs);
+        timer = window.setInterval(() => {
+          if (current >= totalPages - 1) {
+            stop();
+            return;
+          }
+          scrollToIndex(current + 1);
+        }, intervalMs);
       }
 
       function pauseThenResume() {
         stop();
         if (resumeTimer) window.clearTimeout(resumeTimer);
         resumeTimer = window.setTimeout(start, 2500);
+      }
+
+      // Mismo fix que `Testimonials.astro` (ver ese archivo para el
+      // detalle completo): sincroniza el dot activo con la página REAL
+      // más cercana a donde quedó el scroll, sin importar cómo se movió
+      // (drag propio, momentum nativo, trackpad/wheel). Se reprograma en
+      // cada evento de scroll; recién actualiza cuando el scroll deja de
+      // disparar eventos por 120ms ("scroll asentado"). No llama a
+      // `scrollToIndex()` — no fuerza ningún re-snap.
+      function handleScrollSettled() {
+        if (scrollSyncTimer) window.clearTimeout(scrollSyncTimer);
+        scrollSyncTimer = window.setTimeout(() => setActive(nearestPage()), 120);
       }
 
       /** Busca la página cuyo item inicial está más cerca del scroll actual (0..totalPages-1). */
@@ -504,15 +587,6 @@ const LOGO_ITEM_WIDTH_CLASS =
         isOverflowing = nextTotalPages > 1;
         (root as HTMLElement).dataset.overflowing = isOverflowing ? 'true' : 'false';
 
-        // Los clones solo deben ocupar ancho en el track (y ser
-        // alcanzables por scroll) cuando realmente hacen falta para
-        // completar una última página incompleta — si todos los logos
-        // reales ya entran de una, se ocultan para no inflar el
-        // `scrollWidth` con contenido que nunca se va a mostrar.
-        clones.forEach((clone) => {
-          clone.style.display = isOverflowing ? '' : 'none';
-        });
-
         if (nextTotalPages !== totalPages || dots.length !== nextTotalPages) {
           totalPages = nextTotalPages;
           buildDots(totalPages);
@@ -561,6 +635,7 @@ const LOGO_ITEM_WIDTH_CLASS =
       track.addEventListener('pointerup', onPointerUp);
       track.addEventListener('pointercancel', onPointerUp);
       track.addEventListener('scroll', pauseThenResume, { passive: true });
+      track.addEventListener('scroll', handleScrollSettled, { passive: true });
       root.addEventListener('mouseenter', stop);
       root.addEventListener('mouseleave', start);
       root.addEventListener('focusin', stop);

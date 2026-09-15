@@ -5,23 +5,125 @@
  * no hidrata hasta que el bloque entra en viewport, así que si el form
  * está más abajo en la página no paga el costo de hidratación desde el
  * primer render.
+ *
+ * 2026-09-11 (pedido del Tech Lead, con captura del heading "Hablemos"
+ * que se veía sobre el formulario): "no necesitamos este bloque, y el
+ * formulario no debe tener nada en el heading" — antes este bloque
+ * renderizaba `block.pretitle`/`title`/`subtitle` si venían cargados
+ * (un `rich_text` aparte, "Hablemos", vivía justo arriba en el seeder,
+ * ver `genesis/database/seeders/Cliente0ContentSeeder.php`, ya
+ * eliminado). Ahora el bloque NUNCA renderiza heading propio, sin
+ * importar qué traiga `block` — el banner `heading` de la página ya
+ * cumple ese rol (título "Contactame"/subtítulo), el `contact_form` va
+ * directo al formulario.
  */
-import type { Block } from '../../lib/types';
+import type { Block, Media } from '../../lib/types';
 import ContactForm from '../islands/ContactForm';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 
 interface Props {
   block: Block;
 }
 
+// El heading (pretitle/title/subtitle) NO se lee — ver docblock de arriba.
+// El fondo sí: 2026-09-11 (mismo pedido, seguido de "mira la espectativa
+// tambien indica que el fondo es cicagray-50") — mismo helper genérico
+// `resolveBackgroundStyle()` (`src/lib/background.ts`) que ya consumen
+// `Colophon.astro`/`Cta.astro`, sobre los mismos 2 campos que
+// `PropertiesSchema::make(['background_type', 'background_color', ...])`
+// ya expone para este bloque del lado de genesis (`PageResource.php`) —
+// `Cliente0ContentSeeder::upsertContactoPage()` siembra `#F6F6F6` (mismo
+// tono ya usado en `services_grid`/`testimonials_grid`).
+//
+// `padding_y`/`content_width` (2026-09-11, 2da vuelta, pedido del Tech
+// Lead: "falta UX en ese formulario de contactos, corregir y alinear a
+// los otros acabados") — el schema de Filament (`PageResource.php`) ya
+// exponía estas 2 properties para `contact_form`, pero el frontend las
+// ignoraba por completo (padding fijo `py-16`, ancho fijo `max-w-3xl`).
+// Se agregan las mismas 2 tablas de clases que ya usa `RichText.astro`
+// para estos valores (mismo "acabado" que el resto de bloques con
+// heading — sm/md/lg/xl para `padding_y`, full/boxed/narrow para
+// `content_width`), sin heredar las particularidades propias de
+// `rich_text` (sin decoradores/flecha de scroll, este bloque no los
+// tiene). Default `lg`/`boxed` preserva el valor visual previo
+// (`py-16`/`max-w-3xl`) cuando el seeder no fija estas 2 properties.
+interface ContactFormBlockProperties extends BackgroundColorProperties {
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  content_width?: 'full' | 'boxed' | 'narrow';
+  /**
+   * 2026-09-11 (pedido del Tech Lead: "todos deberian permitir personalizar
+   * el fondo en 3 tipos") — imagen de fondo de la SECCIÓN (opcional, capa
+   * intermedia sobre `background_color`), mismo patrón que `Features.astro`/
+   * `Cta.astro`.
+   */
+  media_blend_mode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
+}
+
+const PADDING_Y_CLASSES: Record<NonNullable<ContactFormBlockProperties['padding_y']>, string> = {
+  sm: 'py-8 3md:py-10',
+  md: 'py-12 3md:py-14',
+  lg: 'py-16 3md:py-20',
+  xl: 'py-20 3md:py-24',
+};
+
+const CONTENT_WIDTH_CLASSES: Record<NonNullable<ContactFormBlockProperties['content_width']>, string> = {
+  full: 'max-w-none px-6 3md:px-[80px]',
+  boxed: 'max-w-3xl px-4',
+  narrow: 'max-w-xl px-4',
+};
+
 const { block } = Astro.props;
+const properties = (block.properties as ContactFormBlockProperties) ?? {};
+const content = block.content as { background_image?: Media | null };
+
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : '']
+  .join(' ')
+  .trim();
+
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+const contentWidthClass = CONTENT_WIDTH_CLASSES[properties.content_width ?? 'boxed'];
+
+/** Mismos 6 filtros CSS + opacidad + blend mode que `Features.astro`/`Cta.astro` (`properties.media_*`, set genérico). */
+function backgroundImageEffectStyle(props: ContactFormBlockProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
 ---
 
-<section class="mx-auto max-w-xl px-4 py-16">
-  {block.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{block.pretitle}</p>}
-  {block.title && <h2 class="text-3xl font-bold">{block.title}</h2>}
-  {block.subtitle && <p class="mt-2 text-gray-600">{block.subtitle}</p>}
+<section class="relative w-full" style={sectionStyle || undefined}>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
 
-  <div class="mt-8">
+  <div class={`relative z-10 mx-auto ${contentWidthClass} ${paddingYClass}`}>
     <ContactForm client:visible />
   </div>
 </section>

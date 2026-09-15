@@ -1,11 +1,39 @@
 ---
-/** Stub funcional — presentacional puro, sin JS. */
-import type { Block } from '../../lib/types';
+/**
+ * Características / Grid (`features`) — reescrito por completo 2026-09-07 a
+ * pedido directo del Tech Lead (con captura de referencia: 3 tarjetas
+ * "Misión/Visión/Valores", foto real arriba, título, descripción en párrafo
+ * O en lista de viñetas según el item), cruzando puntualmente el límite
+ * Claude=datos/Antigravity=visual descrito en CLAUDE.md (mismo criterio ya
+ * usado en Hero.astro/Cta.astro/RichText.astro/Heading.astro). Antes era un
+ * stub presentacional sin terminar: sin card, sin fondo de sección, y con
+ * un bug real (leía `item.subtitle`, pero el formulario de Filament guarda
+ * `item.description` — la descripción de cada item nunca se veía en el
+ * sitio, sin error visible, el campo simplemente no tenía consumidor).
+ *
+ * Ver `PageResource.php` (genesis, bloque `features`) para el detalle
+ * completo del rediseño del formulario — layout imagen-izquierda/campos-
+ * derecha por item, y las 3 properties nuevas específicas de este bloque
+ * (`feature_style`, `card_rounded`, `list_style`).
+ *
+ * CORRECCIÓN 2026-09-07: el selector "ninguno/lista/grid" vivía POR ITEM
+ * (`item.content_format`) bajo el nombre confuso "Contenido adicional". El
+ * Tech Lead pidió renombrarlo y moverlo a `properties.list_style` (una sola
+ * property por BLOQUE, ver `FeatureListStyleEnum` en genesis) — cada item
+ * sigue decidiendo implícitamente si tiene algo que mostrar en ese formato
+ * según si trae `items[]` cargado (Misión/Visión no traen, Valores sí).
+ */
+import type { Block, BlendMode, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
+import { Icon } from 'astro-icon/components';
+import BlockHeading from './BlockHeading.astro';
 
 interface FeatureItem {
-  title?: string;
-  subtitle?: string;
-  image?: { url: string | null; alt_text: string | null } | null;
+  icon?: string | null;
+  image?: Media | null;
+  title?: string | null;
+  description?: string | null;
+  items?: string[];
 }
 
 interface Props {
@@ -13,21 +41,1166 @@ interface Props {
 }
 
 const { block } = Astro.props;
-const content = block.content as { items?: FeatureItem[] };
+
+const content = block.content as { items?: FeatureItem[]; background_image?: Media | null };
 const items = content.items ?? [];
+
+interface FeaturesProperties extends BackgroundColorProperties {
+  text_color?: string | null;
+  content_width?: 'full' | 'boxed' | 'narrow';
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /**
+   * Declarada en `PropertiesSchema` (genesis) desde el bloque original,
+   * pero SIN consumidor real en este componente ni antes ni ahora — se
+   * documenta acá para que quede explícito que no es un olvido de este
+   * rediseño, sino deuda preexistente (agregar animación de entrada por
+   * scroll queda fuera del alcance de este cambio puntual).
+   */
+  animation?: 'none' | 'fade' | 'slide-up' | null;
+  /** Estilo de cada tarjeta del grid — ver `FeatureCardStyleEnum` (genesis). */
+  feature_style?: 'simple' | 'shapes' | 'boxed_no_shadow' | 'boxed_shadow' | null;
+  /** Solo tiene efecto visual con `feature_style: boxed_no_shadow`/`boxed_shadow` — ver abajo. */
+  card_rounded?: boolean | null;
+  /**
+   * Formato de `item.items[]` (puntos sueltos, `TagsInput` en Filament) para
+   * CUALQUIER item del grid que los tenga cargados — antes vivía por item
+   * como `item.content_format`, ver `FeatureListStyleEnum` (genesis).
+   */
+  list_style?: 'none' | 'list' | 'grid' | null;
+  /** Imagen de fondo de la SECCIÓN (opcional, capa intermedia sobre `background_color`) — mismo patrón que `cta`/`colophon`. */
+  media_blend_mode?: BlendMode | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
+  /**
+   * CORRECCIÓN 2026-09-10: "no veo hasta ahora la flecha de invitacion a
+   * scrollear que ya usa otros bloques" — mismo patrón/property que
+   * `RichText.astro` (`show_scroll_indicator`), declarada acá por primera
+   * vez, con su campo agregado al schema de Filament del bloque `features`
+   * en genesis (`PageResource.php`, no existía antes ahí).
+   *
+   * SIN CONSUMIDOR (2da vuelta, mismo día): "implementar hardcode entonces"
+   * — la flecha se renderiza siempre, sin condicionar a esta property (ver
+   * markup más abajo). Se deja declarada por si más adelante se retoma un
+   * control por bloque/página vía el admin.
+   */
+  show_scroll_indicator?: boolean | null;
+}
+
+const properties = (block.properties as FeaturesProperties) ?? {};
+
+// Mismo helper compartido que `Cta.astro`/`Colophon.astro`/`FooterBottom.astro`
+// — `background_type: solid|gradient` resuelto a un solo `style` inline;
+// `background_type: image` deja `background_color` vacío en Filament, así
+// que acá no devuelve nada y solo se ve la capa de imagen de abajo.
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : ''].join(' ').trim();
+
+/** Mismos 6 filtros CSS + opacidad + blend mode que `Cta.astro`/`Split.astro`/`Hero.astro` (`properties.media_*`, set genérico). */
+function backgroundImageEffectStyle(props: FeaturesProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
+
+/**
+ * `content_width` (2026-09-07, ajustado a pedido del Tech Lead sobre el
+ * carousel: "deberia ser fullwidth el contenido menor a los 960px"): la
+ * property de Filament SOLO gobierna el ancho desde `3md`/960px en
+ * adelante — ahí es donde el bloque es el grid estático de 3 columnas y
+ * tiene sentido "boxed"/"narrow"/"full" como elección de diseño. Por
+ * debajo de 960px, sea cual sea el valor elegido, el contenedor SIEMPRE es
+ * fullwidth con el mismo gutter mínimo: el carousel de 1 tarjeta con
+ * "peek" (ver comentario más abajo) necesita el ancho completo del
+ * viewport para que el efecto de continuidad de Gestalt se vea bien — un
+ * `max-w`/padding grande de "boxed" en mobile dejaría muy poco ancho real
+ * para la tarjeta y el "trozo" del siguiente elemento.
+ *
+ * 2da vuelta (mismo día, mismo pedido): "dejar 20px de margen a la
+ * izquierda del primer elemento y 20px de margen de la derecha en el
+ * ultimo elemento, de esa forma siempre se verá alineado al cuerpo de la
+ * pagina" — `px-5` = exactamente 20px (escala de Tailwind: `5 * 4px`), un
+ * solo valor fijo sin pasos responsive intermedios (antes `px-4 sm:px-6`,
+ * 16/24px según ancho) — el heading y el carousel comparten este mismo
+ * padre, así que quedan alineados entre sí automáticamente. El primer
+ * ítem del carousel alinea con este padding "gratis" (es el borde
+ * izquierdo natural del track); el último alinea gracias a `snap-end` en
+ * `:last-child` (ver `<style>` más abajo) en vez de `snap-start` como el
+ * resto — sin eso, con el último ítem angosto (`basis-[75%]`) el scroll
+ * nativo no llegaría a mostrarlo perfectamente pegado al borde derecho.
+ */
+/**
+ * CORRECCIÓN 2026-09-07 (7ma vuelta, pedido del Tech Lead con captura de
+ * DevTools sobre este mismo div: "si debe ser algun contenedor interno
+ * por que se mantiene un px-5 que no deberia haber"): cuando se agregó
+ * `ml-5`/`mr-4` DIRECTO en la primera/última tarjeta (vuelta anterior),
+ * este `px-5` del contenedor quedó DUPLICANDO el inset — 20px del
+ * contenedor + 20px de `ml-5` de la tarjeta = 40px real, el doble de lo
+ * pedido. El contenedor pasa a `px-0` (fullwidth de verdad) en mobile.
+ *
+ * 9na vuelta (mismo día, bug real detectado en vivo): "no se muestra ese
+ * mr-5 del ultimo elemento y se queda ahi y continua bajando" — el margen
+ * TRAILING (`mr-5`/`mr-4`) del ÚLTIMO hijo de un flex container NO se
+ * garantiza incluido en `scrollWidth` en todos los navegadores (quirk
+ * documentado: el margen de apertura de un hijo SÍ cuenta siempre, el de
+ * cierre del último hijo es inconsistente) — como el cálculo de
+ * `distance()` de GSAP depende exactamente de `scrollWidth` (ver
+ * <script>), el "hueco" de 20px del `mr-5` nunca llegaba a animarse: el
+ * pin soltaba la sección antes, sin mostrar ese margen. Fix: el gutter deja
+ * de vivir en el margen de las tarjetas — pasa a ser `padding-inline`
+ * (`px-5 3md:px-0`) del PROPIO track (`data-features-track`, ver markup
+ * del `.map()` abajo) — el padding de un contenedor SIEMPRE cuenta 100%
+ * hacia su propio `scrollWidth`/`clientWidth`, en ambos lados, sin este
+ * quirk (y de paso es el patrón estándar para "gutter en carousel con
+ * scroll-snap": `scroll-padding-inline` / padding del contenedor, no
+ * margin de los hijos). El heading
+ * (pretitle/título/subtítulo) sí necesita su propio inset para legibilidad
+ * de texto — no puede ir edge-to-edge como el carousel — así que se le
+ * agrega un padding PROPIO más abajo, en vez de heredarlo de acá (valor
+ * actualizado 2026-09-09, ver comentario junto al div del heading: dejó de
+ * ser `px-5` fijo).
+ */
+/**
+ * CORRECCIÓN 2026-09-10 (5ta vuelta, cambio de estrategia — bug real
+ * reportado con captura): "en el rango del stack de tablet (768-1023px)
+ * asegurate de que desde los bordes existan los padding en X estandares
+ * 20px para tablet, conforme reduzco desde 1023px de ancho se pega a los
+ * bordes laterales". Causa: `DESKTOP_CONTENT_WIDTH_CLASSES` (ver abajo)
+ * solo agrega padding-x desde `3md`/960px (`3md:px-6`/`3md:px-[80px]`) —
+ * quedaba un hueco real SIN padding entre `md`/768px (arranque del stack
+ * de tablet, ver docblock de `CARD_CLASSES`) y `3md`/960px, heredado del
+ * `px-0` pensado originalmente solo para el slider de 1 en 1 (<768px,
+ * fullwidth real a propósito, ver comentario de arriba). Fix: `md:px-5`
+ * (20px, el gutter estándar del sitio) — cubre TODO el rango que antes
+ * quedaba en 0 (768-959px); desde `3md`/960px en adelante lo sigue
+ * gobernando `DESKTOP_CONTENT_WIDTH_CLASSES` como siempre (24px/32px o el
+ * ancho fijo de "full"), que sigue en la cascada después y lo pisa sin
+ * conflicto. Por debajo de `md`/768px sigue en `px-0`, sin cambios.
+ */
+const MOBILE_CONTENT_WIDTH_CLASS = 'px-0 md:px-5';
+/** Mismo criterio 2 niveles (contenedor/contenido) que `RichText.astro` — acá el "contenido" es directamente el grid, sin un 2do cap interno. Todo prefijado `3md:`/`lg:` a propósito, ver comentario de arriba. */
+const DESKTOP_CONTENT_WIDTH_CLASSES: Record<NonNullable<FeaturesProperties['content_width']>, string> = {
+  boxed: '3md:max-w-[1280px] 3md:px-6 lg:px-8',
+  narrow: '3md:max-w-4xl 3md:px-6 lg:px-8',
+  full: '3md:max-w-none 3md:px-[80px]',
+};
+const contentWidthClass = `${MOBILE_CONTENT_WIDTH_CLASS} ${DESKTOP_CONTENT_WIDTH_CLASSES[properties.content_width ?? 'boxed']}`;
+
+/** Mismos 4 pasos que `Cta.astro` (`py-*` responsive por rango). */
+const PADDING_Y_CLASSES: Record<NonNullable<FeaturesProperties['padding_y']>, string> = {
+  sm: 'py-10 3md:py-14',
+  md: 'py-14 3md:py-20',
+  lg: 'py-12 lg:py-20',
+  xl: 'py-20 3md:py-32',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+const featureStyle = properties.feature_style ?? 'boxed_shadow';
+const rounded = properties.card_rounded ?? true;
+const isBoxed = featureStyle === 'boxed_no_shadow' || featureStyle === 'boxed_shadow';
+const roundedClass = rounded ? 'rounded-2xl' : '';
+/** Property de BLOQUE (no por item) — ver `FeaturesProperties.list_style` arriba. */
+const listStyle = properties.list_style ?? 'none';
+
+/**
+ * `feature_style` (2026-09-07): 4 variantes.
+ * - `simple`: sin tarjeta propia — el item hereda el fondo de la sección.
+ * - `shapes`: ídem `simple`, pero la imagen/ícono lleva un marco decorativo
+ *   (blob de color detrás) en vez de quedar suelta.
+ * - `boxed_no_shadow`/`boxed_shadow`: tarjeta blanca propia por item
+ *   (`overflow-hidden` para que la imagen respete el radio de la tarjeta en
+ *   sus 2 esquinas superiores) — `boxed_shadow` es el estilo del diseño de
+ *   referencia (Misión/Visión/Valores).
+ *
+ * CORRECCIÓN 2026-09-10 (cambio de estrategia completo, pedido del Tech
+ * Lead con captura de Figma): "cambiaremos de estrategia... de base mobile
+ * first es slider de 1 en 1... pero en resoluciones tablet pequeños desde
+ * `md:` y menores a `4md:` (1024px) que ya no sea grid 3col, si no que sea
+ * 1 col, y vertical, un elemento debajo del otro. pero con un formato para
+ * tablet (imagen izquierda y texto a la derecha)... a partir de `4md:` se
+ * mantiene igual [el grid]". 3 layouts ahora, mismo markup, solo clases
+ * por breakpoint:
+ * - Base (<768px, `md`): SIN CAMBIOS — el slider de a 1 con GSAP pin (ver
+ *   `<script>`) sigue igual, umbral de breakpoint sin tocar acá.
+ * - `md`–`4md` (768–1023px, breakpoints custom del proyecto): NUEVO —
+ *   stack vertical de 1 columna, cada item en fila horizontal (imagen
+ *   izquierda ~40% del ancho, ocupando el alto completo de la fila vía
+ *   `items-stretch`; texto a la derecha, centrado verticalmente vía
+ *   `justify-center` en el contenedor de contenido). Sin scroll-snap, sin
+ *   GSAP, sin pin — flujo de documento normal.
+ * - `4md`+ (1024px+): grid estático de 3 columnas — el layout que antes
+ *   arrancaba en `3md`/960px, ahora en `4md`/1024px ("a partir de `4md:`
+ *   se mantiene igual" — mismo look, solo el breakpoint donde empieza se
+ *   corrió 64px más). 1ra vuelta de este mismo cambio había usado `lg`
+ *   (1080px) como corte del grid — el Tech Lead corrigió: el corte real
+ *   es `4md`/1024px, tal como se pidió desde el principio.
+ * Valores aproximados del row de tablet (imagen 40%, `p-5`/20px de padding
+ * de contenido) tomados de la captura de Figma compartida — no hay spec
+ * exacto exportado, así que no es 100% milimétrico, pero sí una
+ * interpretación fiel.
+ *
+ * CORRECCIÓN 2026-09-10 (6ta vuelta, pedido puntual: "el gap entre
+ * elementos reducir un poco", con captura del stack de tablet): el gap
+ * entre filas del stack bajó de `gap-8` (32px, el mismo valor que el grid
+ * de desktop) a `md:gap-6` (24px) — SOLO en el rango del stack
+ * (768-1023px). El grid (`4md`+/1024px) mantiene su `gap-8` (32px)
+ * original vía `4md:gap-8`, sin cambios.
+ *
+ * CORRECCIÓN 2026-09-10 (7ma vuelta, mismo día, pedido puntual: "un poco
+ * menos de row gap"): un paso más abajo, `md:gap-6` (24px) → `md:gap-5`
+ * (20px) — coincide con el gutter estándar de 20px ya usado en otras
+ * partes de este mismo bloque (padding-x del track base, `2xs:px-5`).
+ * `4md:gap-8` (grid) sin cambios.
+ *
+ * CORRECCIÓN 2026-09-10 (8va vuelta, mismo día): "cada elemento que tenga
+ * minimo 180px de altura" — cada fila del stack de tablet gana
+ * `md:min-h-[180px]` (en el wrapper del item, no en la imagen/contenido
+ * por separado, para que ambos —imagen `md:self-stretch` y contenido
+ * centrado— respeten el mismo piso). Se resetea con `4md:min-h-0` para no
+ * arrastrar el mínimo al grid de desktop (`4md`+), donde cada card ya
+ * tiene su propio alto natural (imagen `h-48` + contenido).
+ *
+ * CORRECCIÓN 2026-09-10 (9na vuelta, mismo día): "el padding left del
+ * area de texto cambair de px-6 a px-8" — en el contenedor de contenido
+ * (`isBoxed`) del stack de tablet, el `md:p-5` uniforme (20px en los 4
+ * lados) se separa en `md:py-5 md:pr-5 md:pl-8`: el padding-left sube a
+ * 32px (`pl-8`), el resto (arriba/abajo/derecha) se mantiene en 20px
+ * (`py-5`/`pr-5`) — separa más el texto de la imagen sin agrandar el
+ * padding contra el borde derecho de la tarjeta. Solo aplica al estilo
+ * `boxed_*` (el de la captura, Misión/Visión/Valores); el estilo
+ * `simple`/`shapes` no tiene padding propio en el contenedor de texto
+ * (usa `ml-4`, margen, no padding).
+ */
+const CARD_CLASSES: Record<NonNullable<FeaturesProperties['feature_style']>, string> = {
+  simple: 'flex flex-col items-center text-center md:flex-row md:items-center md:text-left 4md:flex-col 4md:items-center 4md:text-center',
+  shapes: 'flex flex-col items-center text-center md:flex-row md:items-center md:text-left 4md:flex-col 4md:items-center 4md:text-center',
+  boxed_no_shadow:
+    `flex flex-col overflow-hidden bg-white text-center md:flex-row md:items-stretch md:text-left 4md:flex-col 4md:items-stretch 4md:text-center ${roundedClass}`.trim(),
+  boxed_shadow:
+    `flex flex-col overflow-hidden bg-white text-center shadow-lg md:flex-row md:items-stretch md:text-left 4md:flex-col 4md:items-stretch 4md:text-center ${roundedClass}`.trim(),
+};
+const cardClass = CARD_CLASSES[featureStyle];
 ---
 
-<section class="mx-auto max-w-6xl px-4 py-16">
-  {block.title && <h2 class="mb-8 text-center text-3xl font-bold">{block.title}</h2>}
-  <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+<section class="relative w-full" style={sectionStyle || undefined} data-features-carousel>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
+
+  {
+    /*
+     * `w-full` (2026-09-08, fix real vía captura de DevTools del Tech Lead:
+     * "en mobile la seccion el ultimo elemento queda muy cortado... tiene
+     * un ancho fijo el viewport o la lista de elementos... se muestra el
+     * ultimo elemento si yo scrolleo o hago swipe manualmente a la
+     * derecha" — con el inspector: "ahi estan los divs que estan
+     * cruzandose", mostrando ESTE div a 561.88px de ancho con una franja
+     * de espacio libre marcada por DevTools a la derecha dentro de la
+     * `<section>`). Causa real: `.js-pin-active` (5ta vuelta de GSAP, ver
+     * `<style>` de abajo) pone `display: flex` en la `<section>` para
+     * centrar verticalmente el contenido con `align-items: center`
+     * mientras dura el pin. Esta `<div>` nunca tuvo `w-full` — antes no
+     * hacía falta: como hijo de bloque normal, ocupaba el 100% del ancho
+     * del padre por comportamiento de bloque por defecto. En cuanto el
+     * padre pasa a `display: flex`, ESTE div se convierte en un flex ITEM
+     * con `flex-basis: auto` / `flex-grow: 0` (default) — deja de llenar
+     * el ancho disponible automáticamente, queda con su ancho "natural"
+     * (más angosto que el viewport), y el carousel de adentro (track,
+     * tarjetas, `distance()` de GSAP) termina calculándose contra ESE
+     * ancho recortado en vez del viewport real — de ahí que la última
+     * tarjeta se viera cortada, y que un scroll/swipe manual adicional
+     * "revelara" el resto (en realidad estaba corrido, no perdido). Fix:
+     * `w-full` explícito, para que este div SIEMPRE ocupe el 100% del
+     * ancho de su padre sin importar si el padre es bloque normal o
+     * flex — sin efecto visual en ningún otro estado (grid de escritorio,
+     * fallback de arrastre manual, sección sin pin activo).
+     */
+  }
+  <div class={`relative z-10 mx-auto flex w-full flex-col gap-6 xs:gap-12 md:gap-8 4md:gap-12 ${contentWidthClass} ${paddingYClass}`}>
     {
-      items.map((item) => (
-        <div class="text-center">
-          {item.image?.url && <img src={item.image.url} alt={item.image.alt_text ?? ''} class="mx-auto mb-4 h-12 w-12" loading="lazy" />}
-          {item.title && <h3 class="text-lg font-semibold">{item.title}</h3>}
-          {item.subtitle && <p class="mt-1 text-sm text-gray-600">{item.subtitle}</p>}
-        </div>
-      ))
+      /*
+       * Cluster pretitle+título+subtítulo ESTANDARIZADO (2026-09-07, pedido
+       * explícito del Tech Lead con captura: "el heading en testimonios o
+       * cualquier tiene un standar de presentacion o estilo... siempre tiene
+       * un gap o margen de separacion entre el titulo y el cuerpo") — mismo
+       * patrón que `Testimonials.astro`/`Logos.astro`: el cluster entero
+       * se condiciona a que exista AL MENOS uno de los 3 campos (puede
+       * llevar solo título, solo pretitulo o solo subtítulo) y vive como UN
+       * ítem de un `flex flex-col` junto al grid/carousel de tarjetas — el
+       * gap entre heading y cuerpo lo pone el padre (SIEMPRE el mismo, sin
+       * importar cuáles de los 3 campos estén presentes), no un
+       * `margin-bottom` en el último campo. Antes el título/subtítulo
+       * tenían `mb-2`/`mb-10` propios: con SOLO título (sin subtítulo,
+       * como en "Misión, visión y valores") el margen real quedaba en
+       * apenas 8px — el bug real que reportó el Tech Lead con la captura.
+       *
+       * CORRECCIÓN 2026-09-09 (2 vueltas seguidas, la 1ra terminó siendo un
+       * error): primero se probó bajar esto a `gap-6` (24px) DE FORMA FIJA
+       * en todo el rango, por un pedido puntual ("el gap... es tan grande
+       * como el padding de la seccion, deberia ser mas cerca al
+       * contenido"), copiando el criterio de `RichText.astro`
+       * (heading→PÁRRAFO, `gap-6` ahí SÍ es lo correcto). Pero el Tech
+       * Lead marcó la comparación real con captura de `Testimonials.astro`
+       * (heading→CAROUSEL DE TARJETAS, la misma categoría de contenido que
+       * este bloque): "por que el heading de esta seccion no esta alineado
+       * con las demas... las demas tienen lo mismo y esta bien definido no
+       * se debe tocar" — `Testimonials`/`Logos` (heading seguido de
+       * carousel, igual que acá) SÍ usan `gap-12` de forma consistente y
+       * deliberada; `RichText`/`Split` (heading seguido de PÁRRAFO/texto
+       * suelto) son una categoría de contenido distinta con su propio
+       * `gap-6` ya confirmado por el Tech Lead en su momento. Se revierte
+       * a `gap-12` FIJO — la comparación correcta era contra el otro grupo
+       * (carousel), no contra el de texto.
+       *
+       * CORRECCIÓN 2026-09-09 (3ra vuelta, mismo día, pedido acotado):
+       * "en resoluciones de menor a 414px, reduce solo el gap entre el
+       * heading y los elementos" — a diferencia de la 1ra vuelta (que
+       * bajaba `gap-12` a `gap-6` en TODO el rango, y resultó ser un
+       * error), acá el pedido es explícitamente ACOTADO a los celulares
+       * más chicos. `xs` (414px, breakpoint ya definido en `global.css`,
+       * mismo criterio que `2xs`/390px usado más abajo en el track) separa
+       * un escalón más angosto SOLO por debajo de ese ancho: `gap-6`
+       * (24px) en la base, sube a `gap-12` (48px, el valor real
+       * compartido con `Testimonials`/`Logos`) desde `xs` en adelante —
+       * el rango ≥414px no se toca, sigue igual al resto del sitio.
+       *
+       * CORRECCIÓN 2026-09-10 (4ta vuelta, tras el cambio de estrategia de
+       * 3 layouts): "mucha separacion entre heading y elementos" —
+       * reportado con captura del stack de tablet (768-1023px). El
+       * `gap-12` (48px) heredado del resto del sitio se sentía excesivo
+       * en este layout nuevo, específicamente contra la 1ra fila del
+       * stack. Se agrega `md:gap-8 4md:gap-12`: 32px SOLO en el rango del
+       * stack de tablet (768-1023px, coincide con el token de 32px
+       * "entre heading/rows" de la captura de Figma compartida para este
+       * mismo rediseño) — desde `4md`/1024px (grid) vuelve a `gap-12`
+       * (48px), el valor estándar sin tocar. Base/mobile (<768px) tampoco
+       * se toca, sigue con `gap-6 xs:gap-12` de las vueltas anteriores.
+       */
     }
+    {
+      /* CORRECCIÓN 2026-09-10: markup movido a `BlockHeading.astro` (partial
+       * compartido — "todos los headings deberian ser... un solo partial
+       * component reutilizado"). `wrapperClass` conserva el mismo padding-x
+       * escalonado y su punto de apagado en `md` (historial completo del
+       * padding-x abajo, sin cambios de comportamiento en ese frente).
+       * Único cambio real: el pretitle deja de usar `opacity-80` — pasa a
+       * `text-cicagold-600`, el MISMO color explícito que ya usan
+       * título/subtítulo en este bloque (`text-cicaindigo-500`/
+       * `text-gray-500`) — antes el propio Features tenía los 3 campos con
+       * 2 criterios de color distintos a la vez (pretitle con opacidad,
+       * título/subtítulo con color explícito), inconsistencia interna que
+       * quedó expuesta recién al auditar los 6 bloques para este partial.
+       *
+       * HISTORIAL preservado (aplica igual dentro de `wrapperClass`):
+       * `px-5 3md:px-0` (7ma vuelta): el contenedor padre ahora es `px-0`
+       * en mobile (fullwidth real para el carousel) — el heading necesita
+       * SU PROPIO inset para que el texto no quede pegado al borde de la
+       * pantalla; en desktop ese inset ya lo da el padding del contenedor
+       * padre, así que acá se apaga para no duplicarlo.
+       * CORRECCIÓN 2026-09-09: `px-5` (20px) fijo en todo el rango <960px
+       * no seguía el mismo patrón "proporcional" que el resto del sitio —
+       * pedido del Tech Lead: "no mantiene el standar de padding en x
+       * minimo proporcional a cada resolucion" (capturas en <540px). El
+       * resto de los bloques boxed (`RichText.astro`, `content_width:
+       * boxed`) escala en 3 pasos reales por breakpoint: `px-4 sm:px-6
+       * lg:px-8` (16px→24px→32px). Se alinea este heading a ese mismo
+       * patrón para el tramo que le corresponde: `px-4 sm:px-6` (16px por
+       * debajo de 540px, 24px desde 540px).
+       * CORRECCIÓN 2026-09-10 (5ta vuelta, cambio de estrategia — bug de
+       * doble padding): el punto donde este inset propio se apaga baja de
+       * `3md:px-0` a `md:px-0` — `MOBILE_CONTENT_WIDTH_CLASS` (ver
+       * comentario ahí) ahora empieza a aportar su propio padding
+       * (`md:px-5`, 20px) desde `md`/768px, no desde `3md`/960px como
+       * antes; si este inset propio seguía apagándose recién en `3md`, en
+       * el tramo 768-959px se sumaban los DOS (`sm:px-6` del heading +
+       * `md:px-5` del padre = 44px) — el bug real de "se pega a los
+       * bordes" reportado era la falta de padding del padre, pero al
+       * arreglarlo había que mover este apagado al mismo breakpoint para
+       * no duplicar. */
+    }
+    <BlockHeading
+      pretitle={block.pretitle}
+      title={block.title}
+      subtitle={block.subtitle}
+      wrapperClass="md:px-0 mx-auto flex w-full flex-col items-center gap-1 px-4 text-center sm:px-6"
+      pretitleColorClass="text-cicagold-600"
+      titleColorClass="text-cicaindigo-500"
+      subtitleColorClass="text-gray-500"
+    />
+
+    {
+      /*
+       * Responsive 2026-09-07 (pedido explícito del Tech Lead, con captura
+       * de referencia de un carousel de reviews estilo Airbnb): grid
+       * estático de 3 columnas desde `3md` (960px, breakpoint custom del
+       * proyecto) en adelante — por debajo de eso (tablet chica y mobile)
+       * el MISMO contenedor se convierte en un carousel de 1 tarjeta a la
+       * vez, aplicando el principio de continuidad de Gestalt: cada
+       * tarjeta mide `basis-[75%]` (no el 100% del ancho disponible), así
+       * que siempre queda un "trozo" (~25%) de la tarjeta siguiente
+       * asomando en el borde — la mente completa el patrón y entiende que
+       * hay más contenido para deslizar, sin necesidad de flechas ni
+       * indicador. Ver: https://aprenderuxui.com/11-principios-gestalt-y-psicologicos-en-diseno-ux-ui/aprender/uidesign/
+       * (2da vuelta, mismo día: "aumentar un poco mas la visualizacion del
+       * trozo del siguiente elemento, esta muy reducido" — sube de
+       * `basis-[85%]`/~15% de peek a `basis-[75%]`/~25%.)
+       *
+       * Deliberadamente NO es un carousel infinito/wraparound (a
+       * diferencia de `Testimonials.astro`/`Logos.astro`, que sí clonan
+       * ítems para dar la vuelta): "no seria un carousel infinito si no
+       * que llega al final, y el usuario desliza a la izquierda de
+       * regreso" — por eso este bloque no lleva el script de auto-avance
+       * ni dots de esos 2 archivos. Scroll-snap nativo (`snap-x
+       * snap-mandatory` + `snap-start` por tarjeta, EXCEPTO la última que
+       * lleva `snap-end` vía `:last-child` en el `<style>` de abajo — ver
+       * comentario de `MOBILE_CONTENT_WIDTH_CLASS` más arriba, "20px de
+       * margen" — 2da vuelta, cambia de `snap-center` a este esquema) le
+       * da swipe táctil gratis, con los límites de scroll normales del
+       * navegador (para en la 1ra/última tarjeta) — 0 JS para lograrlo.
+       *
+       * Misma técnica de "una sola grilla, cambia de layout por
+       * breakpoint" que ya usa Tailwind acá: `flex` (mobile) queda pisado
+       * por `md:flex-col` (stack de tablet) y después por `4md:grid`
+       * (desktop, 1024px+) vía cascada de media queries — no hace falta
+       * duplicar el markup en 3 estructuras DOM distintas (ver CORRECCIÓN
+       * 2026-09-10 en el docblock de `CARD_CLASSES` más arriba: 3
+       * layouts, mismo markup; el corte real del grid es `4md`/1024px,
+       * "desde 1024px a más es normal de grid 3 col").
+       */
+    }
+    {
+      /* Wrapper de clipping (2026-09-07, 4ta vuelta — GSAP ScrollTrigger, ver
+       * <script> más abajo): en el fallback nativo (sin JS / `prefers-
+       * reduced-motion`) este `overflow-hidden` es redundante — el propio
+       * `data-features-track` ya recorta vía su `overflow-x-auto`. Pasa a
+       * ser el que recorta de verdad cuando GSAP toma control: ahí el track
+       * cambia a `overflow: visible` (la clase `.js-scroll-pin`, ver
+       * `<style>`) porque el movimiento horizontal ya no es scroll nativo
+       * sino un `transform` animado, y algo tiene que seguir ocultando las
+       * tarjetas fuera de vista.
+       *
+       * CORRECCIÓN 2026-09-10 (3ra vuelta — bug real reportado con captura
+       * del stack de tablet, estilo `boxed_shadow`): "no se ven las
+       * sombras laterales y del ultimo elemento, como que el viewport
+       * está con overflow hidden... pero impiden los shadows". El umbral
+       * había quedado en `4md:overflow-visible` (1024px, arranque del
+       * grid) — pero el stack de tablet (`md`-`4md`, 768-1023px, SIN
+       * scroll horizontal, sin GSAP, sin pin: ver `mm.add('(max-width:
+       * 767.98px)', ...)` en el `<script>`) tampoco tiene nada que
+       * recortar, y quedaba con `overflow-hidden` heredado del rango
+       * base — cortando el `shadow-lg` de las tarjetas (`boxed_shadow`)
+       * en los bordes izq/der/abajo del wrapper. Fix: el umbral baja de
+       * `4md` a `md` (768px) — coincide con el umbral real de GSAP/pin,
+       * no con el del grid. Desde `md` en adelante (stack Y grid) queda
+       * `overflow-visible`; el recorte real solo hace falta en el rango
+       * base (<768px, slider de a 1). */
+    }
+    {
+      /* CORRECCIÓN 2026-09-09 (reporte del Tech Lead con captura a <390px,
+       * comparada lado a lado contra `Testimonials.astro`): "no se lee
+       * completo los textos, reducir mas el gap y padding en x standar
+       * como los demas secciones" — con `gap-6` (24px) entre tarjetas +
+       * `px-5` (20px) de gutter del track + `basis-[75%]` por tarjeta (el
+       * "peek" de Gestalt, ver comentario más arriba, deliberado y sin
+       * tocar), el ancho útil que le queda al texto de la tarjeta ACTIVA en
+       * los ~375-389px reales de un celular chico quedaba muy angosto —
+       * bastante más apretado que el patrón de "1 tarjeta full-width + 20px
+       * de gutter" que usan `Testimonials.astro`/`Logos.astro` en su propio
+       * rango base (esos bloques no tienen la complejidad extra del "peek"
+       * simultáneo). Fix ACOTADO: `2xs` (390px, breakpoint YA definido en
+       * `global.css` — no inventado) separa un escalón más angosto SOLO
+       * por debajo de ese ancho: `gap-4`/`px-4` (16px) en la base, sube a
+       * los valores actuales `gap-6`/`px-5` (24px/20px) desde `2xs` en
+       * adelante — ningún otro rango (390-959px) se ve afectado, coincide
+       * exactamente con el "menores a 390" reportado. `distance()` (ver
+       * `<script>`) lee el `padding-right` del track en vivo vía
+       * `getComputedStyle()`, no un valor hardcodeado — se ajusta solo al
+       * nuevo escalón sin tocar el cálculo de GSAP. */
+    }
+    <div class="features-viewport md:overflow-visible overflow-hidden" data-features-viewport>
+      <div
+        class="features-track relative flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-4 py-5 2xs:gap-6 2xs:px-5 md:flex-col md:gap-5 md:overflow-visible md:px-0 md:pb-0 md:snap-none 4md:grid 4md:grid-cols-3 4md:gap-8"
+        data-features-track
+      >
+        {
+          items.map((item, index) => (
+            <div
+              class={`md:w-full md:shrink-0 md:basis-auto md:min-h-[180px] md:snap-align-none 4md:min-h-0 shrink-0 basis-[75%] snap-start ${index === items.length - 1 ? 'features-last-item' : ''} ${cardClass}`}
+            >
+              {item.image?.url ? (
+                <div
+                  class={
+                    isBoxed
+                      ? 'h-48 w-full md:h-auto md:w-2/5 md:self-stretch 4md:h-48 4md:w-full 4md:self-auto'
+                      : `mx-auto h-40 w-40 overflow-hidden ${roundedClass} md:mx-0 md:h-full md:w-2/5 md:shrink-0 4md:mx-auto 4md:h-40 4md:w-40`
+                  }
+                >
+                  {/* `draggable={false}` (2026-09-07, 6ta vuelta, pedido del
+                   * Tech Lead con captura: "cuando doy touch manual o swipe
+                   * no cambia horizontalmente y solo se arrastra la foto")
+                   * — un `<img>` es arrastrable por default en el navegador
+                   * (drag-and-drop nativo tipo "arrastrar esta imagen a otra
+                   * pestaña/app"); si el gesto arranca justo sobre la foto,
+                   * el navegador puede interpretarlo como ESE drag nativo en
+                   * vez de como scroll de página — bloqueando exactamente el
+                   * scroll que GSAP necesita leer para mover el carousel
+                   * (ver <script>). Se refuerza con `-webkit-user-drag: none`
+                   * en el <style> de abajo (mismo fix, cinturón y tirantes). */}
+                  <img
+                    src={item.image.url}
+                    alt={item.image.alt_text ?? item.title ?? ''}
+                    class="h-full w-full object-cover"
+                    loading="lazy"
+                    draggable="false"
+                  />
+                </div>
+              ) : (
+                item.icon && (
+                  // Sin dependencia nueva instalada (`@iconify-json/heroicons`)
+                  // para no romper `astro build` con un slug de Filament
+                  // (`heroicon-o-flag`) que no coincide con ningún id de
+                  // iconify real disponible acá (solo Phosphor, `ph:*`).
+                  // Fallback: avatar circular con la inicial del título —
+                  // igual de "boxed_shadow"-friendly que una foto, sin
+                  // inventar un mapeo de íconos no verificado. Si más
+                  // adelante se instala el set de Heroicons, este bloque es
+                  // el único lugar a tocar.
+                  <div
+                    class={`bg-cicagold-500/10 text-cicaindigo-500 mx-auto flex h-16 w-16 shrink-0 items-center justify-center text-2xl font-bold md:mx-0 ${featureStyle === 'shapes' ? 'rotate-3 rounded-[2rem]' : 'rounded-full'}`}
+                  >
+                    {(item.title ?? '?').charAt(0).toUpperCase()}
+                  </div>
+                )
+              )}
+
+              <div
+                class={
+                  isBoxed
+                    ? 'p-6 md:flex md:flex-1 md:flex-col md:justify-center md:py-5 md:pr-5 md:pl-8 4md:block 4md:flex-none 4md:p-6'
+                    : 'mt-4 w-full md:mt-0 md:ml-4 md:flex md:flex-1 md:flex-col md:justify-center 4md:mt-4 4md:ml-0 4md:block'
+                }
+              >
+                {item.title && <h3 class="text-cicaindigo-500 text-xl font-bold">{item.title}</h3>}
+                {item.description && !(listStyle !== 'none' && (item.items?.length ?? 0) > 0) && (
+                  <p class="mt-2 text-base font-normal text-gray-600">{item.description}</p>
+                )}
+                {
+                  /* CORRECCIÓN 2026-09-10 (10ma vuelta, captura de DevTools con
+                   * la sub-lista de "Valores"): "si hay sub lista que la lista
+                   * tenga gap-1" — `gap-2` (8px) → `gap-1` (4px) SOLO en la
+                   * variante `flex flex-col` (`listStyle !== 'grid'`, el caso
+                   * de la captura); la variante `grid` (`grid-cols-2 gap-x-4
+                   * gap-y-2`) no se tocó, fuera de lo pedido. */
+                }
+                {listStyle !== 'none' && (item.items?.length ?? 0) > 0 && (
+                  <ul
+                    class={`mt-3 text-left text-sm text-gray-600 ${listStyle === 'grid' ? 'grid grid-cols-2 gap-x-4 gap-y-2' : 'flex flex-col gap-1'}`}
+                  >
+                    {item.items!.map((point) => (
+                      <li class="flex items-center gap-2">
+                        <span class="bg-cicagold-500 h-1.5 w-1.5 shrink-0 rounded-full" />
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+    {
+      /* CORRECCIÓN 2026-09-10: "no veo hasta ahora la flecha de invitacion a
+       * scrollear que ya usa otros bloques que ya hemos hecho" — mismo
+       * patrón visual que `RichText.astro` (`ph:caret-down` + `animate-bounce`,
+       * ver ese archivo para el precedente). En flujo normal (`mt-3`, no
+       * overlay como en `Hero.astro`) porque este bloque no tiene alto
+       * fijo/pineado fuera del slider base (<768px) — un overlay `absolute`
+       * no tendría contra qué posicionarse de forma confiable en el stack de
+       * tablet o el grid.
+       *
+       * CORRECCIÓN 2026-09-10 (2da vuelta, mismo día): "implementar hardcode
+       * entonces" — en vez de condicionar a `properties.show_scroll_indicator`
+       * (requiere activar el toggle en el admin de Filament, agregado recién
+       * hoy al schema de `features` en genesis, ver `PageResource.php`), se
+       * renderiza SIEMPRE, sin gate de ninguna property. La property queda
+       * declarada en `FeaturesProperties` y el campo en Filament queda
+       * agregado (sin costo, reusable) por si más adelante se quiere volver
+       * a un control por bloque/página — hoy no se consume acá. */
+    }
+    <div class="mt-3 flex w-full justify-center" aria-hidden="true">
+      <Icon name="ph:caret-down" class="text-cicagold-500 size-6 animate-bounce" />
+    </div>
   </div>
 </section>
+
+<style>
+  /* Scroll-snap nativo (ver comentario del frontmatter) ya da swipe táctil
+     gratis — solo se oculta la scrollbar para que se vea como un carousel
+     "de verdad" en mobile/tablet chica, no una lista con overflow visible.
+     Sin efecto desde `3md` (deja de scrollear, pasa a ser grid estático). */
+  .features-track {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    cursor: grab;
+    /* CORRECCIÓN 2026-09-07 (2da vuelta): `touch-action: pan-x` (native
+       horizontal panning + JS interceptando lo vertical con
+       `preventDefault()`) resultó frágil en dispositivo real — el Tech Lead
+       confirmó en vivo que ni el swipe manual ni el scroll-jack funcionaban
+       ("no funciona... y no funcional al touch para deslizar manualmente" /
+       "aun no funciona el swipe manual y de scroll horizontal"). Se
+       reemplaza por el mismo patrón YA PROBADO de `Testimonials.astro`:
+       arrastre horizontal 100% manejado por JS vía Pointer Events
+       (`scrollLeft` asignado directo, funciona igual con touch/mouse/pen,
+       ver <script> más abajo) — `pan-y` le devuelve al navegador el control
+       NATIVO del scroll vertical de página (nunca se pelea con él), sin
+       depender de que ningún `preventDefault()` táctil funcione como se
+       espera. Sin efecto desde `3md` (ya no hay overflow que arrastrar). */
+    touch-action: pan-y;
+  }
+
+  .features-track::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* CORRECCIÓN 2026-09-07 (6ta vuelta, pedido del Tech Lead con captura):
+     "cuando doy touch manual o swipe no cambia horizontalmente y solo se
+     arrastra la foto" — refuerzo del `draggable="false"` del `<img>` (ver
+     markup): `-webkit-user-drag: none` es el equivalente CSS (Safari/iOS,
+     donde el atributo HTML a veces no alcanza) y `user-select: none`
+     evita que un swipe lento se interprete como selección de texto/imagen
+     en vez de gesto de scroll — ambos, cinturón y tirantes, para que
+     NINGÚN gesto que arranque justo sobre la foto se lo robe el navegador
+     antes de que llegue como scroll normal de página (que es lo único que
+     GSAP necesita leer, ver <script>). */
+  .features-track img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+
+  /* Mismo criterio que `Testimonials.astro`: durante el arrastre manual se
+     apaga el scroll-snap (si no, cada `scrollLeft` que asigna el JS pelea
+     contra el navegador tratando de snappear a mitad de gesto) — se
+     reactiva solo al soltar, momento en el que el propio script hace un
+     `scrollTo({ behavior: 'smooth' })` a la tarjeta más cercana. */
+  .features-track.is-dragging {
+    cursor: grabbing;
+    scroll-snap-type: none;
+    user-select: none;
+  }
+
+  /* CORRECCIÓN 2026-09-07 (4ta vuelta, pedido explícito del Tech Lead:
+     "tal vez podria usarse HORIZONTAL CAROUSEL ON SCROLL - GSAP
+     scrolltrigger?"): cuando el script arma el `ScrollTrigger` de pin+scrub
+     (ver <script> más abajo) agrega esta clase al track — el movimiento
+     horizontal pasa a ser 100% un `transform` animado por GSAP, atado al
+     scroll VERTICAL nativo de la página (el mismo swipe/rueda de siempre,
+     sin ningún listener custom de touch/wheel peleando con el navegador).
+     El scroll nativo del track (`overflow-x-auto`+scroll-snap, que hasta acá
+     era el mecanismo de swipe manual) queda inerte: `overflow: visible`
+     (el recorte pasa al wrapper `.features-viewport`, ver markup) y
+     `scroll-snap-type: none` (pelearía visualmente contra el transform).
+     `touch-action: auto` (ya no hay nada propio del track que proteger del
+     pan nativo — CUALQUIER pan, vertical u horizontal incidental, es
+     simplemente scroll de página, que es justo lo que maneja GSAP). */
+  .features-track.js-scroll-pin {
+    overflow: visible;
+    scroll-snap-type: none;
+    touch-action: auto;
+    cursor: default;
+  }
+
+  /* CORRECCIÓN 2026-09-07 (5ta vuelta, pedido explícito del Tech Lead):
+     "solo la altura de esa seccion deberia adaptarse a la altura de de la
+     ventana solo cuando se activa el scroll horizontal" — la sección en sí
+     (no el track) medía exactamente el alto de la ventana MIENTRAS GSAP
+     tenía el control (misma condición que `.js-scroll-pin` del track, ver
+     arriba: <960px, sin `prefers-reduced-motion`) — NO en el grid estático
+     de desktop ni en el fallback de arrastre manual, que conservan su
+     alto natural según el contenido.
+
+     CORRECCIÓN 2026-09-08 (2da vuelta, pedido del Tech Lead viendo tablet:
+     "reducir la altura de la seccion o bloque que no sea fullheight...
+     el resto no cambiar igual que siga la interaccion [el pin hasta
+     terminar de scrollear horizontalmente]"): se probó quitar el
+     `height: 100vh`/`100dvh` forzado, dejando que la sección pineada
+     midiera su alto natural según el contenido.
+
+     REVERTIDO (2026-09-09, 3ra vuelta) — esa prueba causó un bug real
+     confirmado con 3 capturas del Tech Lead: "al continuar con el scroll
+     down visualizandose un fondo blanco y conforme va scrolleando
+     horizontalmente hasta subir toda la seccion verde siguiente" — con la
+     sección MÁS BAJA que el viewport, el `pin: true` de GSAP deja fija la
+     caja (ahora corta) arriba de la pantalla mientras el usuario sigue
+     scrolleando "virtualmente" hacia abajo (la duración del pin la marca
+     `distance()`, un ancho horizontal en píxeles, reinterpretado como
+     distancia de scroll vertical — completamente independiente del alto
+     visual de la sección) — el espacio de la ventana que queda LIBRE
+     debajo de esa caja corta no se puede tapar con nada: ahí se empieza a
+     ver la sección siguiente (`Testimonials.astro`, fondo verde) de forma
+     prematura y fuera de sincro con el progreso real del carousel
+     horizontal (avanza sola con el scroll, no con el avance del
+     carousel). El único motivo por el que el `100vh`/`100dvh` original
+     "funcionaba" no era estético, era estructural: al llenar TODA la
+     ventana durante el pin, no queda ningún hueco por el que la sección
+     siguiente pueda asomarse antes de tiempo. No hay una altura
+     "reducida" que evite este artefacto sin dejar de cubrir el 100% del
+     viewport — se vuelve al `100vh`/`100dvh` original, pendiente
+     preguntarle al Tech Lead si quiere explorar una alternativa distinta
+     (no solo "achicar el número") para su pedido original de tablet.
+
+     CORRECCIÓN 2026-09-09 (4ta vuelta — bug real reportado en reposo, sin
+     necesidad de gesto, con 3 capturas <540px: "no hay espacio arriba"):
+     la cita del pedido original de la 5ta vuelta ("...SOLO cuando se
+     activa el scroll horizontal") se había interpretado como "todo el
+     tiempo que GSAP tiene el control" (breakpoint <960px), no como "solo
+     mientras el pin está genuinamente enganchado" — la clase se agregaba
+     una única vez al cargar la página (`mm.add(...)`) y quedaba activa el
+     100% del tiempo en mobile/tablet. Con la sección forzada a `100vh` +
+     `align-items: center` de forma permanente, y contenido más alto que el
+     espacio libre bajo el navbar en algunos casos, el centrado empujaba
+     el bloque hacia arriba, invadiendo el bloque anterior.
+
+     REVERTIDO (2026-09-09, 5ta vuelta, mismo día) — el fix de la 4ta
+     vuelta (alternar la clase en vivo vía `onToggle` de `ScrollTrigger`,
+     `true` solo durante `isActive`) causó un bug NUEVO y peor, confirmado
+     con captura: "el contenido sigue firme con sus dimensiones sobrepuestas
+     y no se mueven... como si estuviera escalado en zoom" — el spacer
+     interno de `ScrollTrigger` (`pin: true`) asume que el elemento pineado
+     NO cambia de alto por su cuenta mientras el pin está activo; alternar
+     `height: 100vh` ↔ auto vía una clase CSS externa, sin pasar por
+     `ScrollTrigger.refresh()`, rompe esa asunción y deja el layout
+     pineado desincronizado de la posición real del scroll. Se vuelve a la
+     clase permanente (esta versión, idéntica a la 3ra vuelta) — "no hay
+     espacio arriba" queda SIN RESOLVER por este camino; cualquier
+     alternativa futura no puede depender de cambiar el alto de un
+     elemento mientras GSAP lo tiene pineado.
+
+     CORRECCIÓN 2026-09-09 (6ta vuelta — mismo síntoma "no hay espacio
+     arriba" confirmado otra vez por el Tech Lead tras el revert de la 5ta
+     vuelta, sin tocar la ALTURA del elemento pineado esta vez, para no
+     repetir el bug del spacer): con `align-items: center`, el contenido
+     (heading + carousel) se centra verticalmente dentro de los 100vh/dvh
+     fijos — en celulares bajos (ej. iPhone SE, 667px de alto, menos la
+     altura del navbar) el contenido real (heading con copy persuasivo +
+     card del carousel con imagen+texto) puede ser MÁS ALTO que el espacio
+     disponible; al centrarse, el sobrante se reparte por igual arriba y
+     abajo, y la mitad de arriba termina invadiendo visualmente el bloque
+     anterior. Fix: `align-items: flex-start` — el contenido arranca
+     SIEMPRE pegado al padding superior real de la sección
+     (`paddingYClass`, `py-12`/`py-20`), nunca "corrido" hacia arriba por
+     el centrado. Esto cambia SOLO cómo se posiciona el contenido DENTRO
+     de la caja de 100vh ya fija — no toca la altura de la sección en
+     ningún momento (el alto sigue siendo exactamente 100vh/100dvh todo el
+     tiempo que dura el breakpoint match, igual que antes), así que no
+     repite el bug del spacer de GSAP de la 4ta/5ta vuelta. Contrapartida
+     aceptada: en celulares MÁS altos que el contenido, ahora puede quedar
+     aire de más ABAJO (antes se repartía arriba/abajo) — se prefiere este
+     lado del trade-off, un espacio vacío abajo es mucho menos grave que
+     invadir el bloque anterior. `overflow: hidden` agregado como red de
+     seguridad: si en algún celular MUY bajo el contenido sigue siendo más
+     alto que los 100vh disponibles, el exceso se recorta en vez de
+     desbordar hacia la sección siguiente durante el pin (repetiría el bug
+     ya resuelto en la 3ra vuelta, "fondo blanco... la seccion verde
+     siguiente" asomándose antes de tiempo).
+
+     CORRECCIÓN 2026-09-09 (7ma vuelta, mismo día): "recuerda el heading y
+     el slide elementos dentro de un div de contenido para ponerle middle
+     al contenido y algunos mobiles no se vean muy arriba" — la
+     contrapartida aceptada en la 6ta vuelta (aire de más ABAJO en
+     celulares altos, contenido pegado arriba) resultó molesta en la
+     práctica: en la mayoría de los celulares (más altos que el contenido,
+     el caso más común) el heading queda pegado justo debajo del navbar,
+     "muy arriba", con toda la sección viéndose desbalanceada hacia
+     arriba. Al revisar el fix de la 6ta vuelta con más cuidado: el
+     `overflow: hidden` agregado ahí NO depende de qué valor tenga
+     `align-items` — recorta CUALQUIER exceso que se salga de la caja de
+     100vh/100dvh, en cualquier dirección (arriba Y abajo), sea cual sea
+     el motivo del exceso. Es decir, ya solo con `overflow: hidden`
+     alcanza para evitar que el contenido invada el bloque anterior en
+     celulares bajos — `align-items: flex-start` era una segunda capa de
+     protección que ya no hacía falta, y tenía el costo de verse mal en el
+     caso común (celular más alto que el contenido). Fix: vuelve
+     `align-items: center` (el div de heading+carousel, `<div class=
+     "relative z-10 ..." >` en el markup, ya cumple el rol de "div de
+     contenido" que centrar) — el contenido vuelve a verse balanceado
+     verticalmente en el caso común, y el `overflow: hidden` (sin tocar)
+     sigue evitando la invasión del bloque anterior en el caso raro
+     (celular muy bajo). */
+  section[data-features-carousel].js-pin-active {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  /* 2026-09-07, pedido del Tech Lead ("20px de margen... a la derecha en
+     el ultimo elemento, de esa forma siempre se verá alineado al cuerpo de
+     la pagina"): el resto de las tarjetas usa `snap-start` (alinean su
+     borde IZQUIERDO con el borde del track) — con `basis-[75%]` eso deja
+     el 25% de "peek" a la derecha, correcto para todas MENOS la última,
+     que no tiene tarjeta siguiente para asomar. La última usa `snap-end`
+     en cambio: alinea su borde DERECHO con el borde del track.
+
+     CORRECCIÓN (7ma vuelta): el contenedor padre pasó a `px-0` (fullwidth
+     real, ver `MOBILE_CONTENT_WIDTH_CLASS` en el frontmatter) — los 20px
+     ya NO salen de su `padding-inline`.
+
+     CORRECCIÓN (9na vuelta, bug real: "no se muestra ese mr-5 del ultimo
+     elemento y se queda ahi y continua bajando"): tampoco salen de un
+     `mr-5` en la ÚLTIMA tarjeta (8va vuelta) — el margen TRAILING del
+     último hijo de un flex container no cuenta de forma confiable hacia
+     `scrollWidth` en todos los navegadores, y `distance()` de GSAP
+     depende exactamente de esa medida (ver <script>): el hueco de 20px
+     nunca se alcanzaba a animar, el pin soltaba la sección antes de
+     mostrarlo. Los 20px de cada lado ahora son `padding-inline` del
+     PROPIO track (`px-5 3md:px-0`, ver markup) — el padding de un
+     contenedor sí cuenta 100% hacia su `scrollWidth` en ambos lados, sin
+     este quirk. Este `snap-end` sigue siendo necesario igual: sin él, con
+     el último ítem angosto (`basis-[75%]`) el scroll-snap nativo (fallback
+     de `prefers-reduced-motion`/progressive enhancement antes de que cargue
+     GSAP) no llegaría a mostrarlo pegado al borde derecho del track.
+
+     Envuelto en su propio `@media` (en vez de confiar en la cascada contra
+     la utilidad Tailwind `md:snap-align-none` de la tarjeta) A PROPÓSITO:
+     ambas reglas tendrían la misma especificidad (una sola clase) y el
+     orden real entre el CSS de Tailwind y el `<style>` scoped de este
+     componente en el build final no es algo controlable/verificable desde
+     acá — con el `@media` explícito, esta regla directamente NO EXISTE
+     fuera de por debajo de 768px, sin depender de quién gane la cascada.
+
+     CORRECCIÓN 2026-09-10 (cambio de estrategia, ver docblock de
+     `CARD_CLASSES` en el frontmatter): el umbral baja de 959.98px a
+     767.98px — el slider de a 1 con scroll-snap (nativo o vía GSAP) ahora
+     SOLO existe por debajo de `md`/768px; el rango 768–1079px pasa a ser
+     un stack vertical estático sin snap. */
+  @media (max-width: 767.98px) {
+    .features-last-item {
+      scroll-snap-align: end;
+    }
+  }
+</style>
+
+<script>
+  // ═══════════════════════════════════════════════════════════════════════
+  // HISTORIAL — 3 intentos previos con listeners `wheel`/`touchmove`/
+  // Pointer Events hand-rolled (2026-09-07, mismo día) para lograr "scroll
+  // vertical → horizontal mientras no se llegó al extremo" + swipe manual:
+  // 1ra vuelta: `touch-action: pan-x` + `preventDefault()` sobre
+  //   `touchmove` → el Tech Lead reportó "se queda pegado" y navbar
+  //   tapando la sección.
+  // 2da vuelta: se agregó direction-locking (comparar ΔX/ΔY) + navbar-dock
+  //   → el Tech Lead confirmó en vivo que SEGUÍA sin funcionar el swipe.
+  // 3ra vuelta: se reemplazó el drag manual por Pointer Events (patrón de
+  //   `Testimonials.astro`) → el Tech Lead confirmó que TAMPOCO funcionaba
+  //   ("aun no funciona el swipe manual y de scroll horizontal para
+  //   continuar scrolleando abajo y viceversa").
+  //
+  // 4ta vuelta (ESTA, definitiva): pedido explícito del Tech Lead — "tal
+  // vez podria usarse HORIZONTAL CAROUSEL ON SCROLL - GSAP scrolltrigger?"
+  // Se abandona por completo la idea de interceptar/redirigir gestos a
+  // mano (wheel/touch/pointer) — la causa raíz de los 3 fracasos previos
+  // era siempre la misma: pelear contra el modelo de scroll nativo del
+  // navegador (`touch-action`, `preventDefault()`, carreras entre listener
+  // pasivo/activo) es frágil e inconsistente entre motores, y no hay forma
+  // de verificarlo en dispositivo real desde este sandbox.
+  //
+  // GSAP ScrollTrigger con `pin: true` + `scrub` resuelve esto de raíz:
+  // NO intercepta nada — el usuario scrollea la PÁGINA de forma 100%
+  // nativa (wheel o touch, sin distinción, sin `preventDefault()` en
+  // ningún lado) y GSAP simplemente LEE la posición de scroll para animar
+  // un `transform: translateX()` en el track, mientras la sección queda
+  // fijada en pantalla (`pin`) durante el tramo de scroll necesario para
+  // recorrerlo. Es el patrón estándar de la industria para "carousel
+  // horizontal controlado por scroll vertical" — ver demos oficiales de
+  // GSAP ("horizontal scroll section"). De paso resuelve TAMBIÉN el bug
+  // del navbar sticky tapando la sección (el `start` del trigger ya
+  // considera la altura del navbar, ver más abajo) sin necesidad del
+  // `dockBelowHeaderIfNeeded()` manual de la 2da vuelta.
+  //
+  // Solo aplica por debajo de `md`/768px (`gsap.matchMedia('(max-width:
+  // 767.98px)', ...)`, con auto-revert si el viewport cruza el breakpoint
+  // sin recargar la página — CORRECCIÓN 2026-09-10, cambio de estrategia:
+  // antes era `3md`/960px, este comentario había quedado desactualizado).
+  // Desde `md`/768px en adelante ya no hay carousel ni GSAP: 768-1023px es
+  // el stack vertical estático de tablet, y desde `4md`/1024px es el grid
+  // de 3 columnas — 0 GSAP involucrado en ninguno de los dos. Se desactiva
+  // por completo con
+  // `prefers-reduced-motion: reduce` (el pin+scrub ES movimiento forzado
+  // por definición — mala práctica de accesibilidad para quien pidió
+  // menos movimiento); esos usuarios conservan un carousel arrastrable a
+  // mano vía Pointer Events (`initManualDragFallback`, mismo patrón
+  // probado de `Testimonials.astro` que ya se había adoptado en la 3ra
+  // vuelta), sin ningún scroll-jack.
+  import { gsap } from 'gsap';
+  import { ScrollTrigger } from 'gsap/ScrollTrigger';
+
+  gsap.registerPlugin(ScrollTrigger);
+
+  function getHeaderHeight(): number {
+    const header = document.querySelector('[data-site-header]');
+    return header instanceof HTMLElement ? header.getBoundingClientRect().height : 0;
+  }
+
+  /** Tarjeta (o el final del track, para el `snap-end` de la última) más cercana al `scrollLeft` actual. */
+  function nearestSnapLeft(track: HTMLElement): number {
+    const max = Math.max(0, track.scrollWidth - track.clientWidth);
+    const cards = Array.from(track.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+    const candidates = [...cards.map((card) => card.offsetLeft - track.offsetLeft), max];
+
+    let closest = 0;
+    let closestDistance = Infinity;
+    for (const candidate of candidates) {
+      const distance = Math.abs(candidate - track.scrollLeft);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closest = candidate;
+      }
+    }
+    return Math.min(max, Math.max(0, closest));
+  }
+
+  /** Solo para `prefers-reduced-motion: reduce` — sin pin/scrub, arrastre 100% manual (Pointer Events, mismo patrón que `Testimonials.astro`), sin ninguna redirección forzada de scroll.
+   * CORRECCIÓN 2026-09-10 (cambio de estrategia, ver docblock de `CARD_CLASSES`): el umbral baja
+   * de 959.98px a 767.98px — el rango 768–1079px ya no es un carousel (es un stack vertical
+   * estático), no necesita ningún fallback de arrastre aunque el usuario tenga
+   * `prefers-reduced-motion` activado. */
+  function initManualDragFallback(track: HTMLElement) {
+    const isCarouselViewport = () => window.matchMedia('(max-width: 767.98px)').matches;
+    let isDragging = false;
+    let dragPointerId: number | undefined;
+    let dragStartX = 0;
+    let dragStartScrollLeft = 0;
+
+    track.addEventListener('pointerdown', (event) => {
+      if (!isCarouselViewport()) return;
+      isDragging = true;
+      dragPointerId = event.pointerId;
+      dragStartX = event.clientX;
+      dragStartScrollLeft = track.scrollLeft;
+      track.classList.add('is-dragging');
+    });
+
+    track.addEventListener('pointermove', (event) => {
+      if (!isDragging || event.pointerId !== dragPointerId) return;
+      track.scrollLeft = dragStartScrollLeft - (event.clientX - dragStartX);
+    });
+
+    const endDrag = (event: PointerEvent) => {
+      if (!isDragging || event.pointerId !== dragPointerId) return;
+      isDragging = false;
+      track.classList.remove('is-dragging');
+      track.scrollTo({ left: nearestSnapLeft(track), behavior: 'smooth' });
+    };
+    track.addEventListener('pointerup', endDrag);
+    track.addEventListener('pointercancel', endDrag);
+  }
+
+  function initFeaturesCarousel() {
+    const sections = document.querySelectorAll('[data-features-carousel]');
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    sections.forEach((section) => {
+      if (!(section instanceof HTMLElement) || section.dataset.featuresCarouselInitialized === 'true') return;
+      section.dataset.featuresCarouselInitialized = 'true';
+
+      const track = section.querySelector('[data-features-track]');
+      if (!(track instanceof HTMLElement)) return;
+
+      if (prefersReducedMotion) {
+        initManualDragFallback(track);
+        return;
+      }
+
+      const mm = gsap.matchMedia();
+      // CORRECCIÓN 2026-09-10 (cambio de estrategia, ver docblock de
+      // `CARD_CLASSES` en el frontmatter): el umbral del pin baja de
+      // 959.98px a 767.98px — GSAP/el pin de scroll-jack SOLO gobierna el
+      // slider de a 1 (ahora exclusivo de <768px); el rango 768–1023px es
+      // un stack vertical estático (sin JS, sin pin) y desde 1024px
+      // (`4md`) es normal de grid 3 col (CSS puro, `4md:grid`, tampoco
+      // necesita JS).
+      mm.add('(max-width: 767.98px)', () => {
+        // `js-pin-active` en la SECCIÓN (altura = ventana, ver <style>) +
+        // `js-scroll-pin` en el TRACK (overflow visible + transform, ver
+        // arriba) — ambas clases viven mientras GSAP tiene el control
+        // (breakpoint <960px + sin `prefers-reduced-motion`), TODO el
+        // tiempo, no solo durante el instante en que el pin de
+        // `ScrollTrigger` está fijado en pantalla.
+        //
+        // REVERT 2026-09-09 (2 vueltas seguidas — la 1ra rompió el
+        // carousel): se había probado alternar `js-pin-active` en vivo vía
+        // `onToggle` del `ScrollTrigger` (activo solo durante `isActive`),
+        // para resolver un reporte de "no hay espacio arriba" con la
+        // sección permanentemente a 100vh. Esa prueba causó un bug
+        // NUEVO y peor, confirmado con captura: "quedo super raro, es como
+        // si todo el background de la seccion queda bien pero el contenido
+        // sigue firme con sus dimensiones sobrepuestas y no se mueven como
+        // si estuviera escalado en zoom" — síntoma clásico de que el
+        // spacer interno de `ScrollTrigger` (`pin: true`) se desincroniza
+        // cuando el elemento pineado CAMBIA DE ALTO mientras el pin está
+        // activo: GSAP calcula el tamaño del spacer (el hueco que reserva
+        // en el flujo del documento para que el resto de la página no
+        // salte) asumiendo que el elemento pineado no cambia de dimensión
+        // por su cuenta — alternar `height: 100vh` ↔ auto vía una clase
+        // CSS externa, sin pasar por la API de GSAP (`ScrollTrigger.
+        // refresh()`), rompe esa asunción y deja el contenido "pegado"
+        // visualmente en un estado que no corresponde a la posición real
+        // del scroll. Se vuelve a la clase permanente (esta versión) — el
+        // problema de "no hay espacio arriba" queda sin resolver por este
+        // camino, pendiente explorar una alternativa que NO dependa de
+        // cambiar el alto de un elemento pineado en caliente (ver PROGRESS.md).
+        section.classList.add('js-pin-active');
+        track.classList.add('js-scroll-pin');
+
+        // CORRECCIÓN 2026-09-07 (10ma vuelta, bug real reportado en vivo:
+        // "no se ve el margen o padding de 20px en el ultimo elemento
+        // (valores)" — el `px-5` del track de la 9na vuelta TAMPOCO
+        // alcanzaba): `track.scrollWidth` no es una medida confiable acá
+        // porque el track tiene `overflow: visible` bajo `.js-scroll-pin`
+        // (ver <style>) — un elemento con `overflow: visible` no
+        // establece una "caja de scroll" real, así que los navegadores no
+        // garantizan incluir el `padding-right` del propio contenedor en
+        // `scrollWidth` para ese caso (a diferencia de `overflow: auto`,
+        // donde sí es 100% confiable). Por eso el hueco de 20px se seguía
+        // "comiendo": la distancia calculada quedaba corta esos mismos
+        // 20px, sin importar si el gutter vivía en un margen de la
+        // tarjeta (9na vuelta) o en el padding del track (10ma).
+        //
+        // Fix definitivo: dejar de depender de `scrollWidth` por completo
+        // — se mide directo desde el último hijo real (`offsetLeft` +
+        // `offsetWidth`, propiedades de LAYOUT que un `transform` de GSAP
+        // nunca afecta, a diferencia de `getBoundingClientRect()`) más el
+        // `padding-right` computado del track (no hardcodeado: si el
+        // gutter cambia de `px-5` a otro valor algún día, esto se ajusta
+        // solo). `track` necesita `position: relative` (ver clase en el
+        // markup) para ser el `offsetParent` de sus hijos — si no, el
+        // navegador podría resolver el offset contra un ancestro más
+        // lejano (la `<section>`, que sí tiene `position: relative`) y el
+        // cálculo saldría mal.
+        const distance = () => {
+          const cards = Array.from(track.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+          const lastCard = cards[cards.length - 1];
+          if (!lastCard) return 0;
+          const trailingGutter = Number.parseFloat(getComputedStyle(track).paddingRight) || 0;
+          return Math.max(0, lastCard.offsetLeft + lastCard.offsetWidth + trailingGutter - track.clientWidth);
+        };
+        const tween = gsap.to(track, { x: () => -distance(), ease: 'none' });
+
+        // CORRECCIÓN 2026-09-09 (8va vuelta, reporte del Tech Lead con 2
+        // capturas comparadas: "en posicion del contenido centrado y
+        // middled, asi como la primera captura se ve encajado... pero en
+        // realidad esta como en la segunda captura scrollea con el
+        // contenido empujado hacia abajo como se ve"): la 1ra captura (una
+        // tarjeta completa a la vista, bien encajada) y la 2da (3 tarjetas
+        // parciales asomando a la vez, "empujado") son dos MOMENTOS del
+        // mismo mecanismo, no 2 comportamientos distintos — `scrub: 1` ata
+        // la posición horizontal 1:1 al scroll vertical de forma CONTINUA,
+        // sin ningún punto de "descanso": al soltar el dedo/rueda en
+        // CUALQUIER posición intermedia (no solo en los múltiplos exactos
+        // de un ancho de tarjeta), el carousel se queda tal cual quedó,
+        // mostrando fracciones de 2 o 3 tarjetas en vez de una sola
+        // completa — la 1ra captura fue pura casualidad (posición cercana
+        // a un múltiplo), la 2da es el caso más común (cualquier otro
+        // punto). El track además tiene `scroll-snap-type: none` mientras
+        // `js-scroll-pin` está activo (ver `<style>`), así que no hay NADA
+        // corrigiendo esto de forma nativa. Fix: se agrega `snap` a
+        // `ScrollTrigger.create()` — GSAP anima automáticamente la
+        // posición de scroll hacia el punto de tarjeta más cercano apenas
+        // el usuario deja de scrollear, dejando SIEMPRE una tarjeta
+        // completa a la vista (mismo resultado visual que la 1ra captura,
+        // de forma consistente). Los "candidatos" de snap son el
+        // `offsetLeft` real de cada tarjeta (su borde izquierdo, medido en
+        // vivo — no hardcodeado, se ajusta solo si cambia el gap/basis)
+        // más `distance()` en sí (el máximo real, tarjeta final flush al
+        // gutter derecho) — se busca cuál candidato queda más cerca de la
+        // posición actual y se convierte de vuelta a `progress` (0–1) que
+        // es lo que esta opción de GSAP espera recibir/devolver.
+        const snapToNearestCard = (progress: number) => {
+          const dist = distance();
+          if (dist <= 0) return progress;
+          const cards = Array.from(track.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+          if (cards.length === 0) return progress;
+          const currentX = progress * dist;
+          const candidates = [...cards.map((card) => card.offsetLeft), dist];
+          let nearest = candidates[0];
+          let minDiff = Math.abs(nearest - currentX);
+          for (const candidate of candidates) {
+            const diff = Math.abs(candidate - currentX);
+            if (diff < minDiff) {
+              minDiff = diff;
+              nearest = candidate;
+            }
+          }
+          return Math.min(1, Math.max(0, nearest / dist));
+        };
+
+        const st = ScrollTrigger.create({
+          trigger: section,
+          // El navbar es `fixed` (`Header.astro`, `[data-site-header]`) —
+          // se lee su altura en vivo (función, no valor fijo: difiere
+          // entre el estado glassy/sticky y se recalcula en cada
+          // `ScrollTrigger.refresh()`) para que el pin arranque JUSTO
+          // cuando el borde superior de la sección queda flush debajo del
+          // navbar, nunca tapado por él.
+          start: () => `top top+=${getHeaderHeight()}`,
+          end: () => `+=${distance()}`,
+          pin: true,
+          scrub: 1,
+          invalidateOnRefresh: true,
+          animation: tween,
+          snap: {
+            snapTo: snapToNearestCard,
+            duration: { min: 0.15, max: 0.4 },
+            ease: 'power1.inOut',
+          },
+        });
+
+        // Limpieza al salir del breakpoint (resize a `3md`+, sin recargar
+        // la página) — `gsap.matchMedia()` llama a esta función sola.
+        return () => {
+          st.kill();
+          tween.kill();
+          gsap.set(track, { clearProps: 'transform' });
+          track.classList.remove('js-scroll-pin');
+          section.classList.remove('js-pin-active');
+        };
+      });
+    });
+  }
+
+  initFeaturesCarousel();
+  // Astro View Transitions no está en uso en este proyecto (ver
+  // BaseLayout.astro), pero por si Antigravity lo suma más adelante, este
+  // hook re-inicializa tras una navegación client-side (mismo criterio que
+  // `Testimonials.astro`/`Logos.astro`) — se matan los `ScrollTrigger`
+  // previos primero para no duplicar pines sobre DOM que ya no existe.
+  document.addEventListener('astro:page-load', () => {
+    ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+    initFeaturesCarousel();
+  });
+</script>

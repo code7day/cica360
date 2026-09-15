@@ -18,24 +18,158 @@
  * superior. Si el sitio necesita mostrar la navegación principal también
  * en el pie, usar el bloque `footer_bottom` > "Mostrar menú" (seleccionar
  * el menú "menu-principal") desde Studio — ya no es automático.
+ *
+ * 2026-09-13 (fix real, reporte del Tech Lead: "no debería exponerse todo
+ * esos comentarios de planes internos" viendo el "Ver código fuente" del
+ * sitio publicado): los comentarios HTML de este archivo vivían dentro del
+ * `<head>` renderizado — Astro los deja pasar tal cual al HTML final. Un
+ * comentario de bloque dentro del frontmatter `---` (como este mismo
+ * párrafo) en cambio NUNCA llega al output: es exclusivamente para quien
+ * lee el código fuente del repo. Se migran todos los comentarios HTML de
+ * este archivo a comentarios de frontmatter — nada de contexto interno
+ * (ADRs, nombres de Tech Lead, decisiones de proceso) debe ser visible
+ * para un visitante que abra "Ver código fuente" del sitio publicado.
+ *
+ * Notas de tipografía (ex comentario HTML, ver `<link rel="preconnect">`
+ * más abajo): SITIO usa Lato (Google Font), normal e itálica en varios
+ * pesos — confirmado por el Tech Lead, distinto de la tipografía del
+ * manual de marca (Baskerville Old Face es solo para el logo/isotipo, no
+ * se carga acá). El título del Hero usa Lato Black Italic (900 italic) —
+ * ver `src/styles/global.css`. `preconnect` + `&display=swap` para no
+ * bloquear el render por fuentes (ver ARCHITECTURE.md §7, performance).
+ * Pendiente (no implementado, requiere `npm install` con red — este
+ * sandbox no tiene acceso a `registry.npmjs.org`, confirmado con `npm view`
+ * devolviendo 403): reemplazar por self-hosted (`@fontsource/lato`) para
+ * no depender de `fonts.googleapis.com` en producción — mejora adicional
+ * sobre el fix de abajo, no se descarta, solo no se pudo instalar la
+ * dependencia desde acá.
+ *
+ * 2026-09-13 (mejora real de performance, Lighthouse/PageSpeed marcaba
+ * "Solicitudes de bloqueo de renderización" ~450ms en esta hoja de estilos
+ * de Google Fonts): el `<link rel="stylesheet">` síncrono de abajo bloquea
+ * el primer render hasta que el CSS de la fuente llega. Se aplica el
+ * patrón estándar "preload + swap" (sin librerías nuevas, sin cambiar de
+ * proveedor): un `<link rel="preload" as="style">` dispara la descarga con
+ * prioridad alta SIN bloquear el parseo del resto del `<head>`, el
+ * `<link rel="stylesheet" media="print" onload="this.media='all'">` la
+ * aplica recién cuando termina de llegar (el truco de `media="print"` es
+ * lo que evita que el navegador la trate como render-blocking mientras
+ * carga), y el `<noscript>` es el fallback para visitantes sin JS (mismo
+ * resultado que antes, sin la ventana de bloqueo).
+ *
+ * Notas de favicon (ex comentario HTML, ver bloque de `<link rel="icon">`
+ * más abajo, 2026-09-01, implementado por Claude a pedido directo del
+ * Tech Lead — infraestructura de `<head>`, no estilo visual de un bloque,
+ * así que no cruza el límite de Claude=datos/Antigravity=visual del
+ * CLAUDE.md de este repo). Archivos fuente en `sources/favicon/` (paquete
+ * generado con un favicon generator estándar — set completo
+ * Apple/Android/MS/clásico). Organización en `public/` (reordenado a
+ * pedido del Tech Lead — la primera versión tiraba los 24 PNG sueltos en
+ * la raíz de `public/`, "así de sucio"): todo el paquete vive en
+ * `public/favicon/`, EXCEPTO `favicon.ico`, que se deja en la raíz de
+ * `public/` porque los navegadores lo buscan ahí por convención
+ * (`/favicon.ico`) incluso sin ningún `<link>` — dejarlo afuera de la
+ * subcarpeta es justamente lo que lo hace un respaldo de verdad.
+ * `manifest.json` se movió también a `public/favicon/manifest.json` — como
+ * el scope de un manifest por default es el directorio donde vive el
+ * archivo (no la raíz del sitio), se le agregó `"scope": "/"` explícito
+ * para que `start_url: "/"` siga siendo válido estando el archivo fuera de
+ * la raíz. Lista de tags tomada del ejemplo que pasó el Tech Lead,
+ * EXTENDIDA (no recortada):
+ * - `favicon.ico` de respaldo (`rel="icon"` sin `sizes`, no estaba en el
+ *   ejemplo pero es el fallback clásico que entienden navegadores viejos y
+ *   algunos crawlers/lectores de RSS que ignoran el resto).
+ * - `apple-icon-precomposed.png`/`apple-icon.png` (180×180, el "catch-all"
+ *   que iOS busca si no encuentra un tamaño exacto) NO se linkean aparte —
+ *   quedan sin usar a propósito (viven igual en `public/favicon/` por si
+ *   hacen falta más adelante), ya está cubierto el 180×180 real
+ *   (`apple-icon-180x180.png`) explícito en la lista de `sizes`.
+ * - `manifest.json`/`browserconfig.xml`: se les puso `name`/`theme_color`/
+ *   `TileColor` reales de CICA360 (antes decía "App"/blanco genérico,
+ *   defaults del generator) — `#2D2C4D` es `cicaindigo-500`, el color
+ *   DEFAULT de marca (ver `global.css`).
+ * - `<meta name="msapplication-config">`: no estaba en el ejemplo del Tech
+ *   Lead, pero es lo que hace que Edge/IE legacy en Windows encuentren
+ *   `browserconfig.xml` explícitamente en vez de solo auto-descubrirlo por
+ *   convención de nombre en la raíz — se agrega porque ya está el archivo,
+ *   sin costo.
+ *
+ * Nota de ruteo (ex comentario HTML): a propósito, sin `<ClientRouter />`
+ * (ex `<ViewTransitions />`) acá — agrega un runtime JS de ruteo cliente
+ * para todo el sitio, contra la filosofía de "JS mínimo" del proyecto (ver
+ * ARCHITECTURE.md §2/§4). El soporte nativo de View Transitions de los
+ * navegadores modernos ya cubre transiciones simples con CSS puro, sin JS
+ * — si Antigravity necesita algo más, evaluar `@view-transition {
+ * navigation: auto; }` en `global.css` antes de sumar el componente de
+ * Astro.
+ *
+ * 2026-09-13 (pedido del Tech Lead, ver genesis ADR-066): Meta Pixel /
+ * Google Tag Manager — "de forma inteligente tipo con carga perezosa para
+ * que no afecte a Google Insights o Lighthouse". Ninguno de los 2 scripts
+ * se carga en el `load` de la página: quedan en espera hasta la PRIMERA
+ * señal de interacción real (scroll/mousemove/touchstart/keydown/click) o,
+ * si el visitante no interactúa, un timeout de respaldo (ver
+ * `TRACKING_FALLBACK_DELAY_MS` en el script de abajo) — así ninguno de los
+ * 2 cuenta contra TBT/INP ni contra el peso de la ruta crítica que mide
+ * Lighthouse/PageSpeed Insights, que solo evalúa la carga inicial. Mismo
+ * patrón que usan Google/Vercel/las guías de "tag manager sin pegarle al
+ * performance" — la alternativa más pesada (`@astrojs/partytown`, mover
+ * los scripts a un Web Worker) no se sumó a propósito: es una dependencia
+ * nueva para un problema que un `addEventListener` + `setTimeout` de ~30
+ * líneas ya resuelve, y el proyecto ya viene evitando JS de más (ver nota
+ * de ruteo arriba). Trade-off aceptado y real: un visitante que cierra la
+ * pestaña ANTES de interactuar y antes de que venza el timeout nunca carga
+ * los scripts — mismo trade-off que cualquier carga diferida por
+ * interacción, no es un bug.
  */
 import '../styles/global.css';
 import Header from '../components/Header.astro';
-import { getMenu } from '../lib/api';
+import { getMenu, getSiteTracking } from '../lib/api';
+import type { Media } from '../lib/types';
 
 interface Props {
   title: string;
   description?: string | null;
+  /**
+   * 2026-09-13 (ver genesis ADR-065): SEO/OG resuelto por el backend —
+   * `seoTitle`/`keywords`/`ogTitle`/`ogDescription`/`ogImage` vienen de
+   * `page.meta.{seo_title,seo_keywords,og_title,og_description,
+   * og_image_rect}` de cada página/post/servicio (con fallback tenant-wide
+   * ya aplicado del lado de la API, ver `ResolvesPublicLinks::attachResolvedSeoMeta()`
+   * en genesis) — nunca se resuelve nada acá, este layout solo renderiza
+   * lo que ya le llega resuelto.
+   */
+  seoTitle?: string | null;
+  keywords?: string | null;
+  ogTitle?: string | null;
+  ogDescription?: string | null;
+  ogImage?: Media | null;
 }
 
-const { title, description } = Astro.props;
+const { title, description, seoTitle, keywords, ogTitle, ogDescription, ogImage } = Astro.props;
 
 // Menú principal resuelto una vez por página, en build time — se pasa
 // como prop a Header/Footer en vez de que cada uno haga su propio fetch.
 const menu = await getMenu('menu-principal').catch(() => null);
 
+// IDs de tracking (config de sitio, ver genesis ADR-066) — `null` si el
+// tenant no cargó ninguno en Preferencias, o si el fetch falla (mismo
+// criterio `.catch(() => null)` que `menu` arriba: nunca debe romper el
+// build de una página por esto).
+const tracking = await getSiteTracking().catch(() => null);
+const gtmId = tracking?.gtm_id ?? null;
+const metaPixelId = tracking?.meta_pixel_id ?? null;
+
 const siteName = 'CICA360';
-const pageTitle = title === siteName ? title : `${title} — ${siteName}`;
+// `seoTitle` (meta.seo_title, con fallback tenant-wide ya resuelto por la
+// API) gana sobre `title` (el título de contenido de la página) para el
+// `<title>` del documento y `og:title`/`twitter:title` — mismo criterio
+// que ya usa Studio (el campo "Título SEO" existe justamente para poder
+// ser distinto del H1/título visible).
+const effectiveTitle = seoTitle ?? title;
+const pageTitle = effectiveTitle === siteName ? effectiveTitle : `${effectiveTitle} — ${siteName}`;
+const effectiveOgTitle = ogTitle ?? effectiveTitle;
+const effectiveOgDescription = ogDescription ?? description ?? null;
 ---
 
 <!doctype html>
@@ -45,67 +179,31 @@ const pageTitle = title === siteName ? title : `${title} — ${siteName}`;
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{pageTitle}</title>
     {description && <meta name="description" content={description} />}
+    {keywords && <meta name="keywords" content={keywords} />}
     <link rel="canonical" href={Astro.url.href} />
     <meta name="robots" content="index, follow" />
     <meta name="generator" content={Astro.generator} />
 
-    <!--
-      Tipografía del SITIO: Lato (Google Font), normal e itálica en varios
-      pesos — confirmado por el Tech Lead, distinto de la tipografía del
-      manual de marca (Baskerville Old Face es solo para el logo/isotipo,
-      no se carga acá). El título del Hero usa Lato Black Italic (900
-      italic) — ver src/styles/global.css.
-      `preconnect` + swap para no bloquear el render por fuentes (ver
-      ARCHITECTURE.md §7, performance). Antigravity: reemplazar por
-      self-hosted (`@fontsource/lato`) para no depender de
-      fonts.googleapis.com en producción.
-    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      rel="stylesheet"
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
     />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
+      />
+    </noscript>
 
-    <!--
-      Favicon completo (2026-09-01, implementado por Claude a pedido
-      directo del Tech Lead — infraestructura de `<head>`, no estilo
-      visual de un bloque, así que no cruza el límite de
-      Claude=datos/Antigravity=visual del CLAUDE.md de este repo).
-      Archivos fuente en `sources/favicon/` (paquete generado con un
-      favicon generator estándar — set completo Apple/Android/MS/clásico).
-      Organización en `public/` (2026-09-01, reordenado a pedido del Tech
-      Lead — la primera versión tiraba los 24 PNG sueltos en la raíz de
-      `public/`, "así de sucio"): todo el paquete vive en
-      `public/favicon/`, EXCEPTO `favicon.ico`, que se deja en la raíz de
-      `public/` porque los navegadores lo buscan ahí por convención
-      (`/favicon.ico`) incluso sin ningún `<link>` — dejarlo afuera de la
-      subcarpeta es justamente lo que lo hace un respaldo de verdad.
-      `manifest.json` se movió también a `public/favicon/manifest.json` —
-      como el scope de un manifest por default es el directorio donde
-      vive el archivo (no la raíz del sitio), se le agregó `"scope": "/"`
-      explícito para que `start_url: "/"` siga siendo válido estando el
-      archivo fuera de la raíz. Lista de tags tomada del ejemplo que pasó
-      el Tech Lead, EXTENDIDA (no recortada):
-      - `favicon.ico` de respaldo (`rel="icon"` sin `sizes`, no estaba en
-        el ejemplo pero es el fallback clásico que entienden navegadores
-        viejos y algunos crawlers/lectores de RSS que ignoran el resto).
-      - `apple-icon-precomposed.png`/`apple-icon.png` (180×180, el
-        "catch-all" que iOS busca si no encuentra un tamaño exacto) NO se
-        linkean aparte — quedan sin usar a propósito (viven igual en
-        `public/favicon/` por si hacen falta más adelante), ya está
-        cubierto el 180×180 real (`apple-icon-180x180.png`) explícito en
-        la lista de `sizes`.
-      - `manifest.json`/`browserconfig.xml`: se les puso `name`/
-        `theme_color`/`TileColor` reales de CICA360 (antes decía "App"/
-        blanco genérico, defaults del generator) — `#2D2C4D` es
-        `cicaindigo-500`, el color DEFAULT de marca (ver `global.css`).
-      - `<meta name="msapplication-config">`: no estaba en el ejemplo del
-        Tech Lead, pero es lo que hace que Edge/IE legacy en Windows
-        encuentren `browserconfig.xml` explícitamente en vez de solo
-        auto-descubrirlo por convención de nombre en la raíz — se agrega
-        porque ya está el archivo, sin costo.
-    -->
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png" />
@@ -126,22 +224,108 @@ const pageTitle = title === siteName ? title : `${title} — ${siteName}`;
     <meta name="msapplication-config" content="/favicon/browserconfig.xml" />
     <meta name="theme-color" content="#2D2C4D" />
 
-    <meta property="og:title" content={pageTitle} />
-    {description && <meta property="og:description" content={description} />}
+    <meta property="og:title" content={effectiveOgTitle} />
+    {effectiveOgDescription && <meta property="og:description" content={effectiveOgDescription} />}
     <meta property="og:type" content="website" />
-    <!-- Antigravity: OG image real pendiente (og:image, twitter:card) — el favicon ya está resuelto arriba -->
+    <meta property="og:url" content={Astro.url.href} />
+    <meta property="og:site_name" content={siteName} />
+    {ogImage?.url && <meta property="og:image" content={ogImage.url} />}
+    {ogImage?.url && <meta property="og:image:alt" content={ogImage.alt_text ?? effectiveOgTitle} />}
 
-    <!--
-      A propósito, sin `<ClientRouter />` (ex `<ViewTransitions />`) acá:
-      agrega un runtime JS de ruteo cliente para todo el sitio, contra la
-      filosofía de "JS mínimo" del proyecto (ver ARCHITECTURE.md §2/§4).
-      El soporte nativo de View Transitions de los navegadores modernos ya
-      cubre transiciones simples con CSS puro, sin JS — si Antigravity
-      necesita algo más, evaluar `@view-transition { navigation: auto; }`
-      en global.css antes de sumar el componente de Astro.
-    -->
+    <meta name="twitter:card" content={ogImage?.url ? 'summary_large_image' : 'summary'} />
+    <meta name="twitter:title" content={effectiveOgTitle} />
+    {effectiveOgDescription && <meta name="twitter:description" content={effectiveOgDescription} />}
+    {ogImage?.url && <meta name="twitter:image" content={ogImage.url} />}
+
+    {(gtmId || metaPixelId) && (
+      <script define:vars={{ gtmId, metaPixelId }} is:inline>
+        (function () {
+          var TRACKING_FALLBACK_DELAY_MS = 5000;
+          var loaded = false;
+          var ric =
+            window.requestIdleCallback ||
+            function (cb) {
+              return setTimeout(cb, 1);
+            };
+          var cic = window.cancelIdleCallback || clearTimeout;
+
+          function loadGtm() {
+            if (!gtmId) return;
+            (function (w, d, s, l, i) {
+              w[l] = w[l] || [];
+              w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+              var f = d.getElementsByTagName(s)[0],
+                j = d.createElement(s),
+                dl = l != 'dataLayer' ? '&l=' + l : '';
+              j.async = true;
+              j.src = 'https://www.googletagmanager.com/gtm.js?id=' + i + dl;
+              f.parentNode.insertBefore(j, f);
+            })(window, document, 'script', 'dataLayer', gtmId);
+          }
+
+          function loadMetaPixel() {
+            if (!metaPixelId) return;
+            !(function (f, b, e, v, n, t, s) {
+              if (f.fbq) return;
+              n = f.fbq = function () {
+                n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+              };
+              if (!f._fbq) f._fbq = n;
+              n.push = n;
+              n.loaded = true;
+              n.version = '2.0';
+              n.queue = [];
+              t = b.createElement(e);
+              t.async = true;
+              t.src = v;
+              s = b.getElementsByTagName(e)[0];
+              s.parentNode.insertBefore(t, s);
+            })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+            window.fbq('init', metaPixelId);
+            window.fbq('track', 'PageView');
+          }
+
+          function loadAll() {
+            if (loaded) return;
+            loaded = true;
+            cic(fallbackHandle);
+            loadGtm();
+            loadMetaPixel();
+          }
+
+          var interactionEvents = ['scroll', 'mousemove', 'touchstart', 'keydown', 'click'];
+          interactionEvents.forEach(function (eventName) {
+            window.addEventListener(eventName, loadAll, { passive: true, once: true });
+          });
+
+          var fallbackHandle = ric(loadAll, { timeout: TRACKING_FALLBACK_DELAY_MS });
+        })();
+      </script>
+    )}
   </head>
   <body class="flex min-h-screen flex-col">
+    {gtmId && (
+      <noscript>
+        <iframe
+          src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
+          height="0"
+          width="0"
+          style="display:none;visibility:hidden"
+          title="Google Tag Manager"
+        />
+      </noscript>
+    )}
+    {metaPixelId && (
+      <noscript>
+        <img
+          height="1"
+          width="1"
+          style="display:none"
+          src={`https://www.facebook.com/tr?id=${metaPixelId}&ev=PageView&noscript=1`}
+          alt=""
+        />
+      </noscript>
+    )}
     <Header menu={menu} />
     <main class="flex-1">
       <slot />

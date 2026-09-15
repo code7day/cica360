@@ -78,20 +78,30 @@ El backend Stamless es multi-tenant (single DB + `tenant_id`), pero este front s
 ## 6. Build y deploy
 
 ```
-Desarrollador / CI (Node disponible)
+GitHub Actions (Node disponible, workflow_dispatch o push a main)
         │
-        ├─ npm install
+        ├─ npm ci
         ├─ astro build   ──►  dist/  (HTML/CSS/JS estático)
         │
-        └─ deploy (FTP/SFTP) ──► Shared hosting del cliente (sin Node/npm)
+        └─ upload-artifact ──► "cica360-dist" (zip descargable desde el run)
                                          │
-                                         ├─ dist/ (servido por Apache/nginx del hosting)
-                                         └─ contacto.php (si aplica, ver §3)
+                                         ▼
+                        Tech Lead descarga el zip y lo sube a mano
+                        (cPanel File Manager → Upload → Extract)
+                                         │
+                                         ▼
+                        Shared hosting del cliente (sin Node/npm)
+                                         ├─ dist/ (servido por Apache, document root)
+                                         ├─ contacto.php / ipinfo.php / _env.php (ver §3)
+                                         └─ .env (UN NIVEL POR ENCIMA del document root,
+                                                  fuera del alcance del zip — se configura
+                                                  una sola vez, sobrevive cada redeploy)
 ```
 
-- El **build nunca corre en el servidor de producción** — corre en la máquina del desarrollador o en GitHub Actions, donde sí hay Node.
-- El deploy sube únicamente el resultado (`dist/` + el script del proxy si aplica) — el hosting nunca ve `node_modules`, `package.json` ni el código fuente de Astro.
-- **Freshness del contenido**: como el sitio es estático, un cambio de contenido en Filament (backend) no se refleja automáticamente — hace falta un rebuild + redeploy. Fase 0-5 del MVP asume esto manual (correr el build/deploy a mano tras publicar cambios); la Fase 6 (post-MVP) automatiza esto con un webhook desde Filament.
+- El **build nunca corre en el servidor de producción** — corre en GitHub Actions, donde sí hay Node.
+- **2026-09-13 (decisión explícita del Tech Lead, ver PROGRESS.md):** el paso a producción es MANUAL vía cPanel (subir y extraer el zip del artifact `cica360-dist`), no FTP/SFTP automatizado — mientras el contenido cambie seguido (ventana de pre-lanzamiento), se prefiere el control manual explícito de cuándo sale cada versión a producción por sobre la automatización. El snippet de deploy por FTP queda comentado en el workflow por si más adelante se decide automatizar.
+- El artifact sube únicamente el resultado (`dist/`, que ya incluye `contacto.php`/`ipinfo.php`/`_env.php` — Astro copia `public/` tal cual) — el hosting nunca ve `node_modules`, `package.json` ni el código fuente de Astro.
+- **Freshness del contenido**: como el sitio es estático, un cambio de contenido en Filament (backend) no se refleja automáticamente — hace falta un rebuild + re-subida manual del zip. Fase 0-5 del MVP asume esto manual (correr el workflow y subir el zip a mano tras publicar cambios); la Fase 6 (post-MVP) automatiza esto con un webhook desde Filament — evaluar recién cuando el ritmo de publicación lo justifique.
 
 ---
 

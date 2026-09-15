@@ -187,7 +187,8 @@ Notar: `content.slider_slug` (no `slider_id`), `links[].source_slug`/`links[].hr
 | `features` | `content.items[].image` (objeto Media o `null`) |
 | `testimonials` | `content.items[].avatar` (objeto Media o `null`) — ver nota abajo, `items[]` ya no viene del formulario del bloque |
 | `logos` | `content.items[].media` (objeto Media o `null`) |
-| `services_grid` | `content.items[].image` (Media o `null`) + `content.items[].page_slug` + `content.items[].href` |
+| `services_grid` | `content.items[].image` (objeto Media o `null`) — ver nota abajo, `items[]` ya no viene del formulario del bloque (ADR-049) |
+| `testimonials_grid` | `content.items[].avatar` (objeto Media o `null`) — ver nota abajo, mismo dataset que `testimonials`, distinto orden (ADR-050) |
 
 Objeto Media: `{ "uuid", "url", "alt_text", "mime_type" }` — `null` si todavía no hay archivo cargado (el backend no tiene R2 integrado aún, ver `../CURRENT_STATE.md`).
 
@@ -230,7 +231,23 @@ Objeto Media: `{ "uuid", "url", "alt_text", "mime_type" }` — `null` si todaví
 - `properties.show_link`: booleano, mismo gate explícito que `rich_text` — si es `false`, no renderizar el botón aunque `links` tenga datos. Default `false`.
 - `links[0]` (cuando `show_link` es `true`): un único `ContentLink` (mismo shape que el resto de los bloques), pensado como "ver más casos de éxito" hacia una página con el listado completo — no un array de múltiples botones.
 
-**Tipos de bloque a implementar componente**: `hero`, `rich_text`, `image`, `cta`, `features`, `faq`, `contact_form`, `legal_notice`, `heading`, `split`, `testimonials`, `logos`, `services_grid`. **Ignorar tipos desconocidos sin romper la página** — la lista puede crecer del lado del backend sin que este front se entere de antemano.
+`content`/`properties`/`links` de un bloque `services_grid` (rediseñado 2026-09-10, ver ADR-049 — mismo movimiento exacto que `testimonials`: antes el bloque traía `content.items` cargado directo en el formulario, tipo `Repeater`, con `image_id`/`page_id` manuales; ahora los servicios se gestionan en su propio módulo del backend, tabla `services`, resuelto en runtime):
+
+- `content.items[]`: array de servicios ya filtrados/ordenados por el backend según la configuración interna del bloque (`limit`/`order`, **nunca expuestos en la response pública** — son config editorial, no dato de salida). Cada item tiene la MISMA forma que un item de `GET /services` (ver más abajo) más `href`: `{ "uuid", "slug", "href", "pretitle", "title", "subtitle", "countries", "image" }` — `pretitle` puede ser `null` (opcional), `countries` es un array (puede ser `[]` si el servicio no tiene país asociado — "Regional/Global"), `image` es un objeto Media o `null` (ver tabla de arriba), `href` ya viene armado (`/servicios/{slug}`, no hay que construirlo del lado del front). Solo se incluyen servicios publicados (equivalente a `status: published` en su módulo de gestión) — si un bloque no trae ningún servicio publicado, `content.items` llega como array vacío `[]`, nunca `null`. A diferencia de `testimonials` (que ordena por fecha de creación), el orden `asc`/`desc` de este bloque es sobre `sort_order` — el mismo orden manual curado en el módulo "Servicios" del admin, no una noción de "más reciente".
+- `properties.background_color` / `text_color` / `padding_y`: mismo significado que en `rich_text`/`testimonials` (ver arriba).
+- `properties.show_link`: booleano, mismo gate explícito que `rich_text`/`testimonials` — si es `false`, no renderizar el botón aunque `links` tenga datos. Default `false`.
+- `links[0]` (cuando `show_link` es `true`): un único `ContentLink` (mismo shape que el resto de los bloques), pensado como "ver todos los servicios" hacia la página `/servicios` — normalmente sin uso en la página `/servicios` misma (que muestra el catálogo completo y pagina con su propio botón "Ver más servicios" client-side), sí útil para un teaser en otra página (ej. Home).
+- El catálogo completo de la página `/servicios` se sirve con `content.limit: null` (todos los servicios publicados, sin recortar) — la paginación "de 9 en 9" del mockup se implementa 100% client-side en `ServicesGrid.astro` (sin fetch adicional al API), sobre el array `content.items[]` completo ya horneado en el HTML estático en build time.
+
+`content`/`properties`/`links` de un bloque `testimonials_grid` (nuevo 2026-09-11, ver ADR-050 — mismo movimiento exacto que `services_grid`/ADR-049, pero para "Casos de éxito": el bloque `testimonials` original queda como TEASER/preview, `testimonials_grid` es el catálogo completo tipo grilla, sin carousel):
+
+- `content.items[]`: array de testimonios ya filtrados/ordenados por el backend según la configuración interna del bloque (`limit`/`order`, **nunca expuestos en la response pública**). Cada item: `{ "uuid", "name", "role", "quote", "avatar" }` — `role` puede ser `null` (opcional), `avatar` es un objeto Media o `null` (ver tabla de arriba). A diferencia de `content.items[]` de `testimonials` (sin `uuid`), este SÍ trae `uuid` (útil como key estable en el frontend) pero, a diferencia de `services_grid`, NO trae `slug`/`href` — un testimonio no tiene página de detalle propia. Solo se incluyen testimonios marcados como visibles (mismo criterio que `testimonials`) — si un bloque no trae ninguno, `content.items` llega como array vacío `[]`, nunca `null`. El orden `asc`/`desc` de este bloque es sobre `sort_order` (curaduría manual, mismo criterio que `services_grid`) — NO sobre fecha de creación como el bloque `testimonials` original.
+- `properties.background_color` / `text_color` / `padding_y`: mismo significado que en `rich_text`/`testimonials`/`services_grid` (ver arriba).
+- `properties.show_link`: booleano, mismo gate explícito que el resto de los bloques con enlace opcional. Default `false`.
+- `links[0]` (cuando `show_link` es `true`): un único `ContentLink`, pensado como "ver todos los casos de éxito" hacia la página `/casos-de-exito` — normalmente sin uso en esa misma página (que muestra el catálogo completo y pagina con su propio botón "Más casos" client-side), sí útil para un teaser en otra página.
+- El catálogo completo de la página `/casos-de-exito` se sirve con `content.limit: null` (todos los testimonios visibles, sin recortar) — la paginación "de 6 en 6" se implementa 100% client-side en `TestimonialsGrid.astro` (sin fetch adicional al API), mismo mecanismo exacto que `ServicesGrid.astro`.
+
+**Tipos de bloque a implementar componente**: `hero`, `rich_text`, `image`, `cta`, `features`, `faq`, `contact_form`, `legal_notice`, `heading`, `split`, `testimonials`, `logos`, `services_grid`, `testimonials_grid`. **Ignorar tipos desconocidos sin romper la página** — la lista puede crecer del lado del backend sin que este front se entere de antemano.
 
 ### `GET /posts`
 
@@ -314,17 +331,21 @@ Detalle completo de un servicio.
       "intro": "...",
       "offers": [{ "highlight": "...", "text": "..." }],
       "coverages": [{ "label": "...", "intro": "...", "items": ["..."] }],
-      "why_choose_us": "...",
-      "tip": "..."
+      "why_choose_us": { "title": "...", "text": "<p>HTML ya renderizado...</p>" },
+      "tip": { "title": "...", "text": "..." }
     },
     "meta": { "seo_title": "...", "seo_description": "..." },
     "links": [], "properties": {},
-    "published_at": "2026-08-13T00:00:00.000000Z", "image": null
+    "published_at": "2026-08-13T00:00:00.000000Z", "image": null, "image_detail": null
   }
 }
 ```
 
-`content` acá SÍ es un objeto estructurado (no HTML renderizado como en `posts`) — `intro`/`offers`/`coverages`/`why_choose_us`/`tip` son todos opcionales, puede llegar `{}` si el servicio no cargó ese contenido en Studio. Consumido en `src/pages/servicios/[slug].astro`.
+`content` acá SÍ es un objeto estructurado (no HTML renderizado en bloque como en `posts`) — `intro`/`offers`/`coverages`/`why_choose_us`/`tip` son todos opcionales, puede llegar `{}` si el servicio no cargó ese contenido en Studio. `why_choose_us`/`tip` son objetos `{ title, text }`, no strings. Consumido en `src/pages/servicios/[slug].astro`.
+
+**`image_detail` (2026-09-14, solo acá — `GET /services/{slug}` — NO en `GET /services`):** imagen secundaria/opcional, más panorámica/apaisada, para el header del detalle. `image` (principal, presente en ambos endpoints) sigue siendo la miniatura del catálogo (`ServicesGrid.astro`). Fallback "si `image_detail` es `null`, usar `image`" resuelto en `[slug].astro` (`const headerImage = service.image_detail ?? service.image`), NO en el API. Tipado en `src/lib/types.ts`: `Service.image_detail: Media | null` (no existe en `ServiceSummary`).
+
+**Excepción (2026-09-14):** `why_choose_us.text` SÍ es HTML ya renderizado y sanitizado (campo `RichEditor` en Studio, permite negrita/enlaces a mitad de frase) — se inyecta con `set:html` en `[slug].astro`, NO se interpola con `{}` (ver `ServiceContent` en `src/lib/types.ts`). El resto de campos de texto (`intro`, `offers[].text`, `coverages[].items[]`, `tip.text`) siguen siendo texto plano y se interpolan normal.
 
 ### `GET /testimonials` (agregado 2026-09-02, no consumido por este repo todavía)
 

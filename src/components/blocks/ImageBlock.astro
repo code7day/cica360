@@ -1,20 +1,83 @@
 ---
-/** Stub funcional — bloque presentacional puro, sin JS. */
-import type { Block } from '../../lib/types';
+/**
+ * Imagen única (`image`) — Stub funcional hasta 2026-09-11: solo
+ * renderizaba `content.media` y usaba `block.title` a modo de caption
+ * improvisado, sin consumir NINGUNA otra property ya declarada del lado
+ * de Filament (`content.caption`/`aspect`/`align`,
+ * `properties.background_type`/`background_color`/`padding_y`) — quedaban
+ * "fantasma", sin efecto en el sitio.
+ *
+ * 2026-09-11 (pedido del Tech Lead: "el bloque imagen unica falta alinear
+ * UX y con buenos copys y no deberia tener heading este bloque"): al
+ * quitarle el `HeadingFieldset` en Filament (nunca se renderizaba acá como
+ * encabezado real), se rewirea el bloque completo con su propio set de
+ * campos: caption real (`content.caption`, ya no `block.title`), relación
+ * de aspecto, alineación, fondo sólido/degradado (mismo
+ * `resolveBackgroundStyle()` que el resto de bloques con fondo) y padding
+ * vertical en 4 pasos. `properties.animation` queda sin consumir a
+ * propósito — es un campo muerto en TODO el proyecto (ningún bloque lo
+ * renderiza todavía), no una omisión puntual de este bloque; fuera de
+ * alcance de este pase.
+ */
+import type { Block, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 
 interface Props {
   block: Block;
 }
 
 const { block } = Astro.props;
-const content = block.content as { media?: { url: string | null; alt_text: string | null } | null };
+const content = block.content as {
+  media?: Media | null;
+  caption?: string | null;
+  aspect?: 'auto' | '16:9' | '4:3' | '1:1' | null;
+  align?: 'left' | 'center' | 'right' | null;
+};
+
+interface ImageBlockProperties extends BackgroundColorProperties {
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+}
+
+const properties = (block.properties as ImageBlockProperties) ?? {};
+const sectionStyle = resolveBackgroundStyle(properties);
+
+/** Mismos 4 pasos que el resto de los bloques (`RichText.astro`/`Cta.astro`). */
+const PADDING_Y_CLASSES: Record<NonNullable<ImageBlockProperties['padding_y']>, string> = {
+  sm: 'py-6 3md:py-8',
+  md: 'py-8 3md:py-10',
+  lg: 'py-10 3md:py-12',
+  xl: 'py-14 3md:py-16',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'md'];
+
+const ASPECT_CLASSES: Record<NonNullable<typeof content.aspect>, string> = {
+  auto: '',
+  '16:9': 'aspect-video',
+  '4:3': 'aspect-[4/3]',
+  '1:1': 'aspect-square',
+};
+const aspectClass = ASPECT_CLASSES[content.aspect ?? 'auto'];
+
+const ALIGN_CLASSES: Record<NonNullable<typeof content.align>, string> = {
+  left: 'mr-auto',
+  center: 'mx-auto',
+  right: 'ml-auto',
+};
+const alignClass = ALIGN_CLASSES[content.align ?? 'center'];
 ---
 
 {
   content.media?.url && (
-    <figure class="mx-auto max-w-4xl px-4 py-8">
-      <img src={content.media.url} alt={content.media.alt_text ?? ''} class="w-full rounded" loading="lazy" />
-      {block.title && <figcaption class="mt-2 text-sm text-gray-600">{block.title}</figcaption>}
-    </figure>
+    <section class="w-full" style={sectionStyle || undefined}>
+      <figure class={`max-w-4xl px-4 ${paddingYClass} ${alignClass}`}>
+        <img
+          src={content.media.url}
+          alt={content.media.alt_text ?? ''}
+          class={`w-full rounded object-cover ${aspectClass}`}
+          loading="lazy"
+        />
+        {content.caption && <figcaption class="mt-2 text-sm text-gray-600">{content.caption}</figcaption>}
+      </figure>
+    </section>
   )
 }

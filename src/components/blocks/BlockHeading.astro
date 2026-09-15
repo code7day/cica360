@@ -1,0 +1,76 @@
+---
+/**
+ * `BlockHeading` — partial compartido para el cluster pretitle+título+
+ * subtítulo (2026-09-10, pedido directo del Tech Lead): "como todos los
+ * headings deberian ser iguales con el mismo estilo, tamaños y
+ * configuraciones estandares responsivos, deberian ser un solo partial
+ * component que es reutilizado de cualquier block component".
+ *
+ * ALCANCE de esta 1ra vuelta: solo los 4 bloques que YA compartían la
+ * misma estructura exacta (wrapper con `gap-1` + `<p>`/`<h2>`/`<p>` bajo
+ * la misma condición "al menos uno de los 3 campos") — `RichText.astro`,
+ * `Testimonials.astro`, `Logos.astro`, `Features.astro`. `Split.astro` y
+ * `Cta.astro` NO usan este partial todavía: sus 3 campos son hermanos
+ * sueltos dentro del `gap-4`/`gap-2` del contenedor padre (sin wrapper ni
+ * `gap-1` propio) — el Tech Lead pidió dejarlos "para después" en vez de
+ * forzarles el agrupamiento más apretado de este partial sin confirmar
+ * que el cambio visual (más juntos) sea deseado ahí.
+ *
+ * COLOR — auditoría real (no asumida) de los 6 bloques mostró 2 criterios
+ * conviviendo: color explícito (`text-cicagold-600`/`text-cicaindigo-500`/
+ * `text-gray-500`, en RichText/Split/Features) vs. opacidad sobre el color
+ * heredado (`opacity-80`/`opacity-90`, sin clase de color en el título, en
+ * Testimonials/Logos/Cta). El Tech Lead cerró la duda: "mejor se maneja
+ * con color... pretitle_color, title_color, subtitle_color desde el
+ * bloque que lo use" — sin opacidad. Por eso NO hay un color default
+ * hardcodeado acá: cada instancia pasa sus propias clases de color (o
+ * ninguna, para heredar el color ambiente de la sección — ver nota de
+ * `Testimonials.astro` sobre por qué ese bloque específico NO puede pasar
+ * los colores de marca fijos).
+ *
+ * PADDING-X del wrapper: los 4 bloques usan valores/breakpoints DISTINTOS
+ * (`Testimonials`: `sm:px-5 lg:px-0`; `Logos`: ninguno; `Features`: `px-4
+ * sm:px-6 md:px-0`; `RichText`: ninguno, más una alineación dinámica
+ * `text_align` que los otros 3 no tienen) — por eso `wrapperClass` es un
+ * prop de override COMPLETO, no una utilidad que este partial decida por
+ * su cuenta. Cada bloque sigue siendo dueño de cómo su heading encaja con
+ * el padding de su propio contenedor padre.
+ */
+interface Props {
+  pretitle?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  /** Clase completa del `<div>` wrapper — layout (flex/gap/align/text-align) + padding-x propios del bloque que llama. */
+  wrapperClass: string;
+  /** Clase de color del pretitle — vacío/undefined = hereda el color ambiente de la sección (mismo criterio que ya usaba el título en Testimonials/Logos/Cta). */
+  pretitleColorClass?: string;
+  /** Clase de color del título. */
+  titleColorClass?: string;
+  /** Clase de color del subtítulo. */
+  subtitleColorClass?: string;
+}
+
+const { pretitle, title, subtitle, wrapperClass, pretitleColorClass = '', titleColorClass = '', subtitleColorClass = '' } = Astro.props;
+---
+
+{
+  (pretitle || title || subtitle) && (
+    <div class={wrapperClass}>
+      {pretitle && (
+        <p class={`w-full text-sm leading-tight font-light tracking-[0.2em] uppercase xs:leading-normal ${pretitleColorClass}`.trim()}>
+          {pretitle}
+        </p>
+      )}
+      {title && (
+        <h2 class={`w-full text-2xl leading-tight font-bold sm:text-3xl 4md:text-4xl xs:leading-normal ${titleColorClass}`.trim()}>
+          {title}
+        </h2>
+      )}
+      {subtitle && (
+        <p class={`w-full text-lg leading-snug font-light md:text-base xs:leading-normal ${subtitleColorClass}`.trim()}>
+          {subtitle}
+        </p>
+      )}
+    </div>
+  )
+}

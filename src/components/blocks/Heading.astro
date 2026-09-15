@@ -1,24 +1,563 @@
 ---
-/** Stub funcional — presentacional puro, sin JS. */
-import type { Block } from '../../lib/types';
+/**
+ * Heading (Sección de Títulos) — implementación real, 2026-09-05, reemplaza
+ * el stub anterior (imagen suelta + pretitle/title/subtitle planos, sin
+ * `image_tablet`/`image_mobile`, `background_type`, decoradores, overlay ni
+ * filtros). Cruza puntualmente el límite Claude=datos/Antigravity=visual de
+ * `CLAUDE.md` — mismo criterio ya aplicado esta sesión a `Hero.astro`/
+ * `Cta.astro`/`RichText.astro`/`Colophon.astro`: el Tech Lead compartió la
+ * referencia real (`docs/UX-UI-design/ABOUT.pdf`, banner "Sobre CICA") y
+ * pidió el contenido inicial CON el render funcionando, no solo el dato
+ * crudo sembrado sin efecto visible.
+ *
+ * Diseño de referencia (ABOUT.pdf): franja superior con imagen de fondo
+ * (skyline con silueta a contraluz), velo de color oscuro/violeta encima
+ * para legibilidad, título en blanco bold + subtítulo más liviano debajo,
+ * todo centrado, con un decorador tipo onda blanca cortando el borde
+ * inferior hacia el resto del contenido de la página.
+ *
+ * Fondo en capas, primer consumidor de `properties.background_type ===
+ * 'image'` como 3ª variante EXCLUYENTE (mismo criterio que `cta`/`colophon`
+ * del lado de Filament — ver `PageResource.php`, bloque `heading`):
+ *   1. `resolveBackgroundStyle()` — solo pinta algo con `solid`/`gradient`;
+ *      con `background_type: image` no devuelve nada y se ve la capa 2.
+ *   2. Imagen de fondo responsiva (desktop/tablet/mobile) — mismas 3 capas
+ *      apiladas por breakpoint (`md`/`lg`, ver `global.css`) que ya usa
+ *      `Hero.astro`, solo si `background_type === 'image'`.
+ *   3. Overlay de color configurable (`properties.overlay_color`/
+ *      `overlay_opacity`) — a diferencia de `Cta.astro` (velo NEGRO fijo),
+ *      acá el color es libre, para reproducir el tono violeta del PDF sin
+ *      hardcodearlo.
+ *   4. Contenido (pretitle/título/subtítulo), siempre arriba de todo.
+ *   5. Decoradores superior/inferior (SVG onda/zigzag/curva/diagonal/
+ *      triángulo), sobrepuestos al borde — mismo set de paths que
+ *      `Hero.astro`/`RichText.astro`, no reinventados.
+ *
+ * 2 límites conocidos de este bloque en Filament (no se inventan campos
+ * nuevos sin pedido explícito):
+ * - Sin `properties.text_color`: el texto queda fijo en blanco, asumiendo
+ *   el uso previsto (banner con imagen o fondo oscuro).
+ * - Sin `properties.padding_y`: se usa un alto mínimo fijo (`min-h-*`,
+ *   estimado contra el PDF, no medido pixel a pixel) en vez del sistema de
+ *   4 pasos que sí tienen otros bloques.
+ *
+ * Corrección 2026-09-06 (pedido en vivo del Tech Lead): "el background tiene
+ * que ser cover y position top center, reducir también la altura
+ * proporcional a los media queries, que sea coherente con la altura de las
+ * pantallas".
+ * - Posición: `bg-center` → `bg-top` en las 3 capas de imagen. Tailwind
+ *   `bg-top` compila a `background-position: top`, que en CSS (keyword
+ *   único) es equivalente a "top center" — exactamente lo pedido, sin
+ *   necesidad de una clase arbitraria `bg-[position:top_center]`.
+ * - Altura: el `min-h-[360px] 3md:min-h-[440px]` fijo en px no escalaba con
+ *   la altura real del viewport (ni bajaba en pantallas grandes donde una
+ *   franja tan alta se ve desproporcionada). Se reemplaza por `min-h-*` en
+ *   `vh` que DECRECE a medida que sube el breakpoint (mismo criterio que
+ *   `Hero.astro` para su alto de slider): en mobile la franja ocupa más
+ *   proporción de una pantalla más chica y vertical; en desktop, con más
+ *   ancho horizontal disponible, una fracción menor de la altura ya alcanza
+ *   para el mismo contenido y se ve más equilibrado. Rango final: 52vh
+ *   (mobile) → 46vh (`sm`/540px) → 40vh (`md`/768px) → 34vh (`lg`/1080px),
+ *   sin volver a valores fijos en píxeles.
+ *
+ * Corrección 2026-09-06 (2da vuelta, mismo pedido): "el titulo es de 48px?,
+ * no deberia ser del mismo tamaño del hero y debe ser proporcional a cada
+ * media querie". El título tenía `text-4xl sm:text-5xl` — 2 pasos nada más
+ * (36px → 48px) y luego se CONGELABA en 48px para siempre desde `sm`/540px
+ * en adelante, sin acompañar `md`/`lg`/pantallas grandes. Además ese mismo
+ * salto (`text-4xl`/`sm:text-5xl`) es EXACTAMENTE el que usa `Hero.astro`
+ * para su H1 antes de saltar a `lg:text-hero` (64px, variable
+ * `--text-hero` de `global.css`) — este bloque (Heading) es un banner de
+ * página interna, no el Hero de Home, así que NO debe compartir la misma
+ * escala ni, sobre todo, el mismo tope de 64px. Fix: escala propia con un
+ * paso más y sin congelarse — `text-3xl sm:text-4xl md:text-5xl
+ * lg:text-6xl` (30px → 36px → 48px → 60px), proporcional en los 4
+ * breakpoints y siempre por debajo del `--text-hero` (64px) de `Hero.astro`.
+ *
+ * Corrección 2026-09-06 (3ra vuelta): "cambiar el titular de 48 a 40px o
+ * conviertelo a em o lo equivalente en tailwindcss". El paso `md:text-5xl`
+ * (48px) baja a 40px. Tailwind no trae una utilidad estándar para 40px —
+ * el escalón nativo más cercano es `text-4xl` (36px, ya usado en `sm`) —
+ * así que se usa un valor arbitrario en `rem` (no en `px`) para que el
+ * tamaño respete el zoom/font-size del usuario, tal como pidió el Tech
+ * Lead: `md:text-[2.5rem]` (2.5rem × 16px raíz = 40px). Nota: otros
+ * bloques (`RichText`/`Split`/`Testimonials`/`Logos`/`Cta`) resuelven su
+ * escalón de 40px con `text-[40px]` (en `px`, no `rem`) en su breakpoint
+ * `5xl` — se mantiene la unidad `rem` acá porque fue lo pedido
+ * explícitamente esta vez; no se tocan esos otros bloques.
+ *
+ * Corrección 2026-09-06 (4ta vuelta): "reduce un poco mas se ve muy
+ * grande". Se baja toda la escala un escalón nativo de Tailwind (en vez de
+ * afinar un solo breakpoint con otro valor arbitrario): `text-2xl
+ * sm:text-3xl md:text-4xl lg:text-5xl` (24px → 30px → 36px → 48px). Con
+ * esto el paso `md` deja de necesitar el valor arbitrario `[2.5rem]` de la
+ * vuelta anterior (ya no son 40px sino 36px, que sí tiene clase nativa
+ * `text-4xl`) y el tope en `lg` baja de 60px a 48px — sigue por debajo del
+ * `--text-hero` (64px) de `Hero.astro`, y ahora también por debajo del
+ * viejo tope de esta misma escala.
+ *
+ * Corrección 2026-09-06 (5ta vuelta): "tiene que ser la font con peso
+ * black y no bold". `font-bold` (700) → `font-black` (900) — mismo peso
+ * que usa el H1 de `Hero.astro` (`font-black italic`, ver ese archivo);
+ * acá SIN `italic`, porque el diseño de referencia (ABOUT.pdf) muestra el
+ * título de esta franja en redonda, no itálica — solo se iguala el peso
+ * tipográfico, no el estilo completo del Hero (ver corrección de la 2da
+ * vuelta más arriba sobre por qué este bloque no debe compartir la MISMA
+ * escala/estilo que el Hero de Home).
+ *
+ * Corrección 2026-09-06 (6ta vuelta): "reducir mas la altura en tablet y
+ * mobile, ocupan casi la mitad". El rango de la corrección de altura
+ * anterior (`52vh`/`46vh`/`40vh`/`34vh`, ver más arriba) todavía dejaba la
+ * franja ocupando casi la mitad del viewport en mobile/tablet. Se vuelve a
+ * bajar todo el rango, manteniendo el mismo criterio (decrece a medida que
+ * sube el breakpoint): `min-h-[34vh] sm:min-h-[30vh] md:min-h-[28vh]
+ * lg:min-h-[26vh]` — la reducción más fuerte cae justo donde se reportó el
+ * problema (mobile 52vh→34vh, `sm`/tablet 46vh→30vh), y `md`/`lg` bajan en
+ * proporción menor para mantener la curva pareja.
+ *
+ * Corrección 2026-09-06 (7ma vuelta): "a partir de 768 a más está muy
+ * pequeño, ya estuvo bien". La 6ta vuelta bajó TODO el rango, pero el
+ * reporte original ("tablet y mobile, ocupan casi la mitad") resultó ser
+ * solo hasta el breakpoint `sm`/540px — de `md`/768px en adelante el
+ * tamaño de la 5ta vuelta ya era el correcto. Se revierten puntualmente
+ * `md`/`lg` a sus valores previos (`40vh`/`34vh`) y se mantiene la
+ * reducción de la 6ta vuelta SOLO en mobile/`sm` (`34vh`/`30vh`). Rango
+ * final, ya no estrictamente decreciente: `min-h-[34vh] sm:min-h-[30vh]
+ * md:min-h-[40vh] lg:min-h-[34vh]` — el salto sm→md vuelve a subir a
+ * propósito, porque es lo que el Tech Lead confirmó que se veía bien.
+ *
+ * Corrección 2026-09-06 (8va vuelta): "la altura queda, pero el contenido
+ * — en este caso el padding — hay que disminuir 16px al inferior, aumentar
+ * 16px al padding superior, ya que el navbar está sobrepuesto al heading,
+ * entonces el texto se tiene que ver más MIDDLED [centrado]". El `<header>`
+ * del sitio es `fixed`/overlay sobre este bloque (cubre visualmente su
+ * franja superior), así que el centro geométrico de la SECCIÓN completa
+ * (donde hoy centra el contenido, vía `items-center` del flex del
+ * `<section>`) queda más arriba que el centro de la porción REALMENTE
+ * visible (la que empieza debajo del navbar) — el texto se veía corrido
+ * hacia arriba. Fix: el wrapper de contenido (pretitle/título/subtítulo)
+ * pasa de sin padding vertical a `pt-8 pb-0` (32px arriba / 0 abajo) —
+ * tomando como referencia implícita un padding simétrico de 16px (`py-4`,
+ * el paso estándar de Tailwind) y aplicando los deltas pedidos:
+ * +16px arriba (16→32) y -16px abajo (16→0). Con el mismo `gap-2` entre
+ * pretitle/título/subtítulo, el bloque de texto queda corrido hacia abajo
+ * dentro del `<section>` centrado, compensando el área tapada por el
+ * navbar y viéndose centrado en la franja realmente visible.
+ *
+ * Corrección 2026-09-06 (9na vuelta, mismo pedido, sobre captura): "32
+ * arriba es mucho, y quita el gap que separa el titulo del subtitulo y
+ * pretitulo si lo tuviera". 2 ajustes puntuales sobre la 8va vuelta:
+ * - `pt-8` (32px) baja a `pt-4` (16px): la compensación por el navbar
+ *   seguía corriendo el texto de más.
+ * - Se elimina `gap-2` del wrapper (pretitle/título/subtítulo quedan sin
+ *   separación extra entre ellos) — el `mt-1` propio del subtítulo (ver
+ *   más abajo, el `<p>` de subtítulo) sigue dando su propio respiro
+ *   mínimo, así que no queda sin aire alguno entre título y subtítulo,
+ *   solo sin el `gap-2` extra del contenedor.
+ *
+ * Corrección 2026-09-06 (10ma vuelta, captura mobile en vivo): "en mobile
+ * no puede ser de ese tamaño, en mobile creo que es proporcionalmente un
+ * poquito mas grande, no puede tener los titulos de secciones mas grande
+ * que el titular". Causa real: la escala de la 4ta vuelta (`text-2xl
+ * sm:text-3xl md:text-4xl lg:text-5xl` = 24/30/36/48px) quedaba, en mobile
+ * y `sm`, MÁS CHICA que el H2 de las secciones de abajo (escala
+ * compartida de `RichText`/`Split`/`Testimonials`/`Logos`/`Cta`, EN ESE
+ * MOMENTO: `text-3xl sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl
+ * 5xl:text-[40px]` = 30/36/24/30/36/40px) — el H1 (título de la página)
+ * se veía más chico que el H2 "Quiénes somos" de abajo, jerarquía
+ * invertida. Fix: se sube SOLO lo necesario en los 2 breakpoints donde
+ * fallaba (`base`/`sm`), con valores arbitrarios ajustados para quedar
+ * apenas por encima del H2 sin volver a la escala grande de antes de la
+ * 4ta vuelta: `text-[2rem] sm:text-[2.5rem] md:text-4xl lg:text-5xl`
+ * (32/40/36/48px). Verificado breakpoint por breakpoint contra el H2 EN
+ * ESE MOMENTO:
+ *
+ * **Actualización 2026-09-07 (1ra vuelta)**: pedido del Tech Lead —
+ * "desde 540px hasta 767px tiene un font size que deberia tener todo el
+ * componente heading hasta el 959px... por que tiene un tamaño muy
+ * pequeño" — se quitó el escalón `md:text-2xl` (24px, 768–959px) del H2
+ * (`TITLE_RESPONSIVE_CLASS`/equivalente, SOLO el título — pretitle y
+ * subtítulo tienen sus propias clases, sin tocar). Escala intermedia:
+ * `text-3xl sm:text-4xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]` =
+ * 30/36/30/36/40px.
+ *
+ * **Actualización 2026-09-07 (2da vuelta, misma tarde)**: pedido de
+ * seguimiento — "y los titulos hay que alinear el fontsize menores a
+ * 768px que tenga text-3xl" ("osea solo el title", confirmando que el
+ * pretitle/subtítulo quedan fuera). Se quita también `sm:text-4xl`: por
+ * debajo de `md`/768px el H2 queda uniforme en `text-3xl` (30px, sin el
+ * salto a 36px que había en `sm`/540–767px). Escala H2 compartida FINAL:
+ * `text-3xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]` = 30/30/36/40px
+ * (el `3md:text-3xl` queda redundante con la base pero se deja explícito
+ * por claridad histórica). Como consecuencia, el "efecto colateral" del H1
+ * empatando con el H2 en 768–959px (mencionado en la 1ra vuelta) queda
+ * resuelto solo: el H2 ahí vuelve a ser 30px, otra vez menor que el H1
+
+ * **Actualización 2026-09-07 (3ra vuelta, spec completa y final del Tech
+ * Lead)**: "algo esta mal, de nuevo, los titulos, cuando sea el ancho de
+ * la pantalla sea menor a 540px que sea text-2xl, menores a 768px que sea
+ * text-3xl, menores a 1700px que sea text-4xl, mayores a 1700px que sea
+ * text-5xl" — reemplaza por completo las 2 vueltas anteriores de hoy (ya
+ * no queda escalón `3md`/`2xl` propio, ni el valor custom `text-[40px]`:
+ * pasa a ser el `text-5xl` real de Tailwind, 48px, no 40px). Escala H2
+ * compartida (`RichText`/`Split`/`Testimonials`/`Logos`/`Cta`, SOLO el
+ * título) FINAL: `text-2xl sm:text-3xl md:text-4xl 5xl:text-5xl` =
+ * 24/30/36/48px.
+ *
+ * Efecto conocido sin corregir (no pedido explícitamente esta vuelta):
+ * comparado contra el H1 de esta página (`text-[2rem] sm:text-[2.5rem]
+ * md:text-4xl lg:text-5xl` = 32/40/36/48px), quedan 2 rangos donde H1 y H2
+ * EMPATAN en vez de que el H1 sea mayor — `md`/768–1023px (ambos 36px) y
+ * `5xl`/1700px+ (ambos 48px, el H1 llega a ese tamaño desde `lg`/1024px,
+ * antes que el H2). Si el Tech Lead confirma que la jerarquía "H1 siempre
+ * más grande" sigue vigente, el H1 necesitaría su propio ajuste — no se
+ * tocó acá porque el pedido de esta vuelta fue específico sobre "los
+ * titulos" de sección (el H2), con una spec numérica exacta y sin mención
+ * del H1.
+ *
+ * **Actualización 2026-09-07 (4ta vuelta, mismo día — corrige el umbral
+ * de 768px por 1024px)**: "algo esta mal, de nuevo, los titulos, cuando
+ * sea el ancho de la pantalla sea menor a 540px que sea text-2xl, menores
+ * a 1024px que sea text-3xl, menores a 1700px que sea text-4xl, mayores a
+ * 1700px que sea text-5xl" — mismos 4 tamaños de la 3ra vuelta, pero el
+ * segundo corte pasa de 768px (`md`) a 1024px (`4md`, breakpoint custom de
+ * este proyecto — ver `@theme` en `global.css`). Escala H2 compartida
+ * FINAL: `text-2xl sm:text-3xl 4md:text-4xl 5xl:text-5xl` = 24/30/36/48px
+ * (los mismos 4 tamaños de la 3ra vuelta, el único cambio es DÓNDE pasa de
+ * 30 a 36: antes en 768px, ahora en 1024px). Comparado contra el H1: con
+ * este corte a 1024px, los 2 empates de la 3ra vuelta se reducen a 1 solo
+ * — en `md`/768–1023px el H2 ahora es 30px (ya no 36px), otra vez menor
+ * que el H1 (36px); el único empate que queda es `5xl`/1700px+ (ambos
+ * 48px). Mismo criterio que las vueltas anteriores: no se toca el H1 sin
+ * pedido explícito.
+ *
+ * **Actualización 2026-09-08 (5ta vuelta)**: "creo que el titulo en
+ * resoluciones mayores a 1700px que sea text-4xl, no necesitamos mas
+ * grande se ve mal" — se quita `5xl:text-5xl` (el único escalón que
+ * quedaba después de `1024px`). Escala H2 compartida FINAL: `text-2xl
+ * sm:text-3xl 4md:text-4xl` = 24/30/36px, con 36px como techo desde
+ * 1024px en adelante (ya no sube más pasado 1700px). Efecto secundario
+ * positivo: el único empate que quedaba con el H1 (`5xl`/1700px+, ambos
+ * 48px) desaparece — el H1 sigue subiendo a 48px desde `lg`/1024px y el
+ * H2 se queda fijo en 36px, así que la jerarquía "H1 siempre más grande"
+ * queda restablecida en TODO el rango de anchos, sin ningún empate.
+ * (`md:text-4xl` = 36px) — jerarquía restaurada en todo el rango.
+ * 32>30 (`base`), 40>36 (`sm`), 36>24/30 (`md`/`3md`), 48>36/40
+ * (`lg`/`2xl`/`5xl`) — el H1 queda siempre por encima del H2 en toda la
+ * escala, sin volver a los tamaños ya descartados por "verse muy grande".
+ *
+ * Corrección 2026-09-06 (11va vuelta, capturas de Figma): "en el diseño
+ * existe una capa intermedia al background y el contenido textual es una
+ * capa gradiente con estas caracteristicas" — capturas del inspector de
+ * Figma mostrando una capa de 1440×~176px con degradado lineal de arriba
+ * a abajo, color `#2D2C4D` sólido (100% opacidad) del 0% al 35%, luego
+ * degradando a 0% de opacidad (mismo color) hacia el 100%. Hasta ahora el
+ * `overlay_color`/`overlay_opacity` de este bloque pintaba un velo PLANO
+ * de opacidad uniforme (`absolute inset-0`, mismo criterio que `Cta.astro`
+ * pero con color configurable) — no un degradado. Fix: el mismo div de
+ * overlay pasa de `background-color` plano a un `linear-gradient(to
+ * bottom, color 0%, color 35%, transparente 100%)`, anclado arriba
+ * (`inset-x-0 top-0 h-44` — 176px, el alto que trae el propio spec de
+ * Figma) en vez de cubrir toda la sección. El stop transparente se arma
+ * con `color-mix(in srgb, color 0%, transparent)` (mismo patrón ya usado
+ * en `Testimonials.astro` para el hover de las tarjetas) en vez de asumir
+ * que `overlay_color` viene siempre en hex de 6 dígitos (el `ColorPicker`
+ * de Filament puede entregar otros formatos) — funciona con cualquier
+ * formato de color válido en CSS. `overlay_opacity` se sigue aplicando
+ * como antes, vía la propiedad `opacity` del div completo (multiplica
+ * TODO el degradado), no como un 4to stop.
+ *
+ * Corrección 2026-09-06 (12va vuelta, capturas del resultado en vivo vs.
+ * Figma): "no aparece esa capa, en la espectativa queda asi [imagen
+ * vívida, banda oscura solo arriba] la imagen gradiente sobre la imagen
+ * detras de los titulos, la segunda captura es como esta maquetado
+ * [imagen pareja/apagada en toda la franja]". En ese momento la capa
+ * directamente no pintaba nada (bug real de datos, ver 2 párrafos abajo),
+ * así que el diagnóstico de "altura mal proporcionada" de esta vuelta fue
+ * una hipótesis SIN verificar — quedó revertido por la 13va vuelta al
+ * confirmarse la causa real.
+ *
+ * Corrección 2026-09-06 (13va vuelta, aclaración explícita del Tech
+ * Lead): "esto es para que en la parte de 100% quedará detras del navbar"
+ * / "esto es para que en la parte del 35% de espacio al 100% quedará
+ * detras del navbar". El propósito real del tramo SÓLIDO del degradado
+ * (0%–35%, 100% de opacidad) es quedar oculto DETRÁS del navbar
+ * (`<header>`, `position: fixed`) — no debe verse como un bloque plano;
+ * lo único que debe asomar por debajo del navbar es el tramo que ya está
+ * en transición hacia transparente. Con `inset-0` (12va vuelta) el 35%
+ * sólido escalaba con el alto TOTAL de la sección (26–40vh, cientos de
+ * px) — mucho más alto que el navbar real —, así que gran parte de ese
+ * tramo sólido quedaba VISIBLE por debajo del navbar en vez de oculta
+ * detrás suyo, y por eso se veía "exagerado"/parejo. Fix: se vuelve a una
+ * altura FIJA para el overlay, pero calculada contra el alto real del
+ * navbar (`Header.astro`: `pt-7` = 28px + `data-glass-bar` `h-[60px]` en
+ * desktop = 88px en reposo, antes de hacer scroll) en vez de adivinada:
+ * `h-64` (256px) — con eso, `256 × 0.35 ≈ 90px`, prácticamente igual a
+ * los 88px del navbar, así que el tramo sólido termina justo donde
+ * termina el navbar y lo que se ve por debajo es solo la transición hacia
+ * transparente. Clase de esa vuelta: `inset-x-0 top-0 h-64` (no `inset-0`,
+ * no el `h-44`/176px de la 11va vuelta — ninguno de los 2 se calculó
+ * contra el navbar real).
+ *
+ * Corrección 2026-09-06 (14ta vuelta): "la altura del overlayer no debe
+ * ocupar la altura total del headering, solo el 70%". El Tech Lead
+ * simplifica el criterio: en vez de un píxel fijo calculado contra el
+ * navbar (`h-64`, 13va vuelta), el overlay debe medir el 70% del alto de
+ * la SECCIÓN completa (`Heading`), no el 100% (`inset-0`, 12va vuelta) ni
+ * un valor fijo en px. Fix: `h-64` → `h-[70%]` — como la sección es
+ * `relative` y tiene una altura calculada (vía `min-h-*` + flex), un alto
+ * porcentual en un hijo `absolute` se resuelve contra esa altura real en
+ * cada breakpoint, sin recalcular nada a mano. Clase final del overlay:
+ * `inset-x-0 top-0 h-[70%]`.
+ *
+ * Corrección 2026-09-06 (15ta vuelta, capturas en 500px y 375px con los 3
+ * títulos nuevos — "Descubrí nuestros servicios", "Conocé nuestros casos
+ * de éxito"): "esa resolucion es de 500 en navegador pero en mobile de
+ * 375px se formará 2 lineas, y el subtitulo si puede formar 2 lineas pero
+ * el leading y tamaño ajustar en mobile". A 375px estos títulos más largos
+ * (agregados esta sesión, más largos que "Sobre CICA"/"Contactame") caen a
+ * 2 líneas — aceptado por el Tech Lead, NO se acortan los títulos — pero
+ * ni el `<h1>` ni el `<p>` de subtítulo tenían un `leading-*` explícito:
+ * `text-[2rem]`/`text-[2.5rem]` son valores ARBITRARIOS de Tailwind, que a
+ * diferencia de `text-2xl`/`text-3xl` NO traen un line-height emparejado
+ * automático — quedaban con el `line-height` "normal" del navegador, y el
+ * subtítulo (`text-lg` sin `leading-*`) con el leading por defecto de esa
+ * escala (más suelto de lo ideal para 2 líneas en una franja ya angosta en
+ * mobile). Fix: `leading-tight` fijo en el título (mismo valor en los 4
+ * breakpoints — un H1 corto no necesita variar) + subtítulo con tamaño Y
+ * leading que achican en mobile y vuelven a los valores previos desde
+ * `sm`/540px: `text-base leading-snug sm:text-lg sm:leading-normal`.
+ *
+ * Corrección 2026-09-11 (16va vuelta, pedido del Tech Lead: "por si reducen
+ * la ventana la altura como pasa en las ipads hoy en dia con
+ * multi-ventana"): el alto de la sección venía en `vh` puro
+ * (`34vh`/`30vh`/`25vh`/`34vh`, ver arriba) — resuelve contra el alto REAL
+ * del viewport, no contra un tamaño de pantalla completa asumido. En iPad
+ * con Split View/Slide Over, o una ventana de escritorio achicada en alto
+ * (no en ancho), el viewport puede bajar a 300–400px de alto real: con
+ * `md:min-h-[25vh]` eso deja la franja en ~100px, donde el título ya no
+ * entra cómodo y los decoradores (SVG `h-16`/64px con offset fijo
+ * `-top-2`/`-bottom-2`) empiezan a pisar el texto en vez de enmarcarlo. No
+ * es un breakpoint de ANCHO (esos ya están cubiertos) — es el alto de
+ * ventana, que ningún breakpoint de Tailwind mide por sí solo. Fix: se le
+ * agrega un piso de 200px a cada valor usando la función nativa de CSS
+ * `max()` dentro del valor arbitrario — `min-h-[max(200px,34vh)]`, etc. El
+ * piso solo entra en juego por debajo de: 200/0.34≈588px de alto (base/
+ * `lg`), 200/0.30≈667px (`sm`), 200/0.25=800px (`md`) — casos de ventana
+ * recortada, no de navegación normal a pantalla completa (mobile/tablet/
+ * desktop siguen viéndose exactamente igual que antes). No requiere JS ni
+ * media query nueva; el resto del bloque (imagen `bg-cover`, overlay
+ * `h-[70%]` relativo a la sección, padding del contenido) se recalcula
+ * solo contra la nueva altura mínima sin tocarse.
+ */
+import type { Block, DecoratorShape, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 
 interface Props {
   block: Block;
 }
 
 const { block } = Astro.props;
+
 const content = block.content as {
-  image_desktop?: { url: string | null; alt_text: string | null } | null;
+  image_desktop?: Media | null;
+  image_tablet?: Media | null;
+  image_mobile?: Media | null;
 };
+
+interface HeadingProperties extends BackgroundColorProperties {
+  decorator_top?: DecoratorShape;
+  decorator_top_color?: string | null;
+  decorator_top_opacity?: number | null;
+  decorator_bottom?: DecoratorShape;
+  decorator_bottom_color?: string | null;
+  decorator_bottom_opacity?: number | null;
+  overlay_color?: string | null;
+  overlay_opacity?: number | null;
+  contrast?: number | null;
+  brightness?: number | null;
+  /** 0 = imagen 100% opaca (default), 100 = invisible. */
+  transparency?: number | null;
+  title_alignment?: 'left' | 'center' | 'right';
+}
+
+const properties = (block.properties as HeadingProperties) ?? {};
+
+/**
+ * `resolveBackgroundStyle()` solo puede tipar `background_type` como
+ * `'solid' | 'gradient'` (ver `BackgroundColorProperties` en `background.ts`
+ * — no conoce la 3ª variante `'image'` que Filament sí ofrece acá vía
+ * `background_type_image`, ver `PageResource.php`). En vez de comparar
+ * `properties.background_type === 'image'` a mano (chocaría de tipos, y
+ * además NO hace falta): con `background_type: image`, Filament oculta y
+ * nunca persiste `background_color` — `resolveBackgroundStyle()` ya
+ * devuelve `''` sin pintar nada apenas `background_color` es `null`. La
+ * capa de imagen de abajo se activa por la presencia REAL de
+ * `content.image_desktop`/`image_mobile`, no por leer `background_type` —
+ * mismo criterio ya usado en `Cta.astro`.
+ */
+const sectionStyle = resolveBackgroundStyle(properties);
+
+/**
+ * Mismo set de shapes SVG que `Hero.astro`/`RichText.astro` (no
+ * reinventados) — ver esos archivos para el detalle de por qué solo `wave`
+ * está medido contra el Design System real; el resto son formas genéricas.
+ */
+const DECORATOR_PATHS: Record<Exclude<DecoratorShape, 'none'>, string> = {
+  wave: 'M0,38 C 160,50 250,56 324,56 C 420,56 550,45 720,35 C 850,28 950,18 1044,18 C 1150,18 1300,30 1440,48 L1440,64 L0,64 Z',
+  zigzag: 'M0,64 L0,42 L120,22 L240,42 L360,22 L480,42 L600,22 L720,42 L840,22 L960,42 L1080,22 L1200,42 L1320,22 L1440,42 L1440,64 Z',
+  curve: 'M0,64 L0,30 C 360,-6 1080,66 1440,30 L1440,64 Z',
+  diagonal: 'M0,64 L0,56 L1440,10 L1440,64 Z',
+  triangle: 'M0,64 L0,42 L660,42 L720,10 L780,42 L1440,42 L1440,64 Z',
+};
+
+/** Fill sólido si opacidad=100 (default), degradado (transparente → color) si es menor — mismo patrón que RichText.astro. */
+function decoratorFill(color: string | null | undefined, opacity: number | null | undefined, gradientId: string): string {
+  return (opacity ?? 100) < 100 ? `url(#${gradientId})` : (color ?? '#ffffff');
+}
+
+/**
+ * Filtros de la imagen de fondo: `brightness`/`contrast` propios de este
+ * bloque (nombres cortos — a diferencia de `media_brightness`/
+ * `media_filter_contrast` de `Cta.astro`, ver docblock de arriba) + opacidad
+ * derivada de `transparency` (0 = opaco, 100 = invisible; dirección inversa
+ * a `media_opacity` de otros bloques, tal cual la etiqueta del campo en
+ * Filament: "Transparencia").
+ */
+function imageEffectStyle(props: HeadingProperties): string {
+  const filters: string[] = [];
+  if (props.brightness != null) filters.push(`brightness(${props.brightness}%)`);
+  if (props.contrast != null) filters.push(`contrast(${props.contrast}%)`);
+
+  const opacity = 1 - Math.min(100, Math.max(0, props.transparency ?? 0)) / 100;
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity};`;
+}
+const imageStyle = imageEffectStyle(properties);
+
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
+
+const TITLE_ALIGN_CLASSES: Record<NonNullable<HeadingProperties['title_alignment']>, string> = {
+  left: 'items-start text-left',
+  center: 'items-center text-center',
+  right: 'items-end text-right',
+};
+const titleAlignClass = TITLE_ALIGN_CLASSES[properties.title_alignment ?? 'left'];
+
+const hasContent = Boolean(block.pretitle || block.title || block.subtitle);
 ---
 
-<section class="relative px-4 py-20 text-center">
-  {
-    content.image_desktop?.url && (
-      <img src={content.image_desktop.url} alt={content.image_desktop.alt_text ?? ''} class="absolute inset-0 -z-10 h-full w-full object-cover" loading="lazy" />
-    )
-  }
-  {block.pretitle && <p class="text-sm uppercase tracking-wide">{block.pretitle}</p>}
-  {block.title && <h1 class="text-4xl font-bold">{block.title}</h1>}
-  {block.subtitle && <p class="mt-2 text-lg">{block.subtitle}</p>}
-</section>
+{
+  /* CORRECCIÓN 2026-09-09 (11va vuelta, pedido puntual sobre el rango
+  tablet): "desde 768px a 1024px reducir un poco mas la altura del
+  header" — la 7ma vuelta (2026-09-06) había dejado `md:min-h-[40vh]` fijo
+  desde 768px hasta `lg`/1080px, sin ningún escalón intermedio en
+  `4md`/1024px (breakpoint custom del proyecto).
+
+  CORRECCIÓN 2026-09-09 (12va vuelta, mismo día, valor final): "creo que
+  vamos con 25vh" — el primer intento de la 11va vuelta (`36vh`/`34vh`,
+  dos escalones distintos) se reemplaza por un valor único y más bajo para
+  todo el rango 768–1024px pedido: `md:min-h-[25vh]`. Al ser el mismo
+  valor en `md` y `4md`, el escalón `4md` queda innecesario (nada cambia
+  ahí) — se saca. `lg`/1080px en adelante NO se tocó, sigue en `34vh`
+  (fuera del rango pedido, valor confirmado en la 7ma vuelta). Curva
+  final: `34vh (base) → 30vh (sm/540) → 25vh (md/768–1079) → 34vh
+  (lg/1080)`. */
+}
+{
+  hasContent && (
+    <section
+      class="relative flex min-h-[max(200px,34vh)] w-full items-center text-white sm:min-h-[max(200px,30vh)] md:min-h-[max(200px,25vh)] lg:min-h-[max(200px,34vh)]"
+      style={sectionStyle || undefined}
+    >
+      {(content.image_desktop?.url || content.image_mobile?.url) && (
+        <>
+          {/* Mismas 3 capas apiladas por breakpoint que Hero.astro — ver
+                docblock de ese archivo para el porqué (bg-cover vs. <img>,
+                URL dinámica en `style` en vez de una clase Tailwind). */}
+          <div
+            class="absolute inset-0 block bg-cover bg-top md:hidden"
+            style={`background-image: url('${content.image_mobile?.url ?? content.image_desktop?.url}'); ${imageStyle}`}
+            role="img"
+            aria-label={content.image_desktop?.alt_text ?? block.title ?? ''}
+          />
+          <div
+            class="absolute inset-0 hidden bg-cover bg-top md:block lg:hidden"
+            style={`background-image: url('${content.image_tablet?.url ?? content.image_desktop?.url ?? content.image_mobile?.url}'); ${imageStyle}`}
+            role="img"
+            aria-label={content.image_desktop?.alt_text ?? block.title ?? ''}
+          />
+          <div
+            class="absolute inset-0 hidden bg-cover bg-top lg:block"
+            style={`background-image: url('${content.image_desktop?.url ?? content.image_mobile?.url}'); ${imageStyle}`}
+            role="img"
+            aria-label={content.image_desktop?.alt_text ?? block.title ?? ''}
+          />
+        </>
+      )}
+
+      {overlayOpacity > 0 && properties.overlay_color && (
+        <div
+          class="pointer-events-none absolute inset-x-0 top-0 h-[70%]"
+          style={`background: linear-gradient(to bottom, ${properties.overlay_color} 0%, ${properties.overlay_color} 35%, color-mix(in srgb, ${properties.overlay_color} 0%, transparent) 100%); opacity: ${overlayOpacity / 100};`}
+          aria-hidden="true"
+        />
+      )}
+
+      {properties.decorator_top && properties.decorator_top !== 'none' && (
+        <svg
+          class="absolute -top-2 left-0 z-10 h-16 w-full -scale-y-100"
+          viewBox="0 0 1440 64"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {(properties.decorator_top_opacity ?? 100) < 100 && (
+            <defs>
+              <linearGradient id={`heading-top-${block.uuid}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color={properties.decorator_top_color ?? '#ffffff'} stop-opacity="0" />
+                <stop
+                  offset="100%"
+                  stop-color={properties.decorator_top_color ?? '#ffffff'}
+                  stop-opacity={(properties.decorator_top_opacity ?? 100) / 100}
+                />
+              </linearGradient>
+            </defs>
+          )}
+          <path
+            d={DECORATOR_PATHS[properties.decorator_top]}
+            fill={decoratorFill(properties.decorator_top_color, properties.decorator_top_opacity, `heading-top-${block.uuid}`)}
+          />
+        </svg>
+      )}
+
+      <div class={`relative z-10 mx-auto flex w-full max-w-4xl flex-col px-4 pt-4 pb-0 sm:px-6 lg:px-8 ${titleAlignClass}`}>
+        {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
+        {block.title && <h1 class="w-full text-[2rem] leading-tight font-black sm:text-[2.5rem] md:text-4xl lg:text-5xl">{block.title}</h1>}
+        {block.subtitle && (
+          <p class="mt-1 w-full text-base leading-snug font-light opacity-90 sm:text-lg sm:leading-normal">{block.subtitle}</p>
+        )}
+      </div>
+
+      {properties.decorator_bottom && properties.decorator_bottom !== 'none' && (
+        <svg class="absolute -bottom-2 left-0 z-10 h-16 w-full" viewBox="0 0 1440 64" preserveAspectRatio="none" aria-hidden="true">
+          {(properties.decorator_bottom_opacity ?? 100) < 100 && (
+            <defs>
+              <linearGradient id={`heading-bottom-${block.uuid}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color={properties.decorator_bottom_color ?? '#ffffff'} stop-opacity="0" />
+                <stop
+                  offset="100%"
+                  stop-color={properties.decorator_bottom_color ?? '#ffffff'}
+                  stop-opacity={(properties.decorator_bottom_opacity ?? 100) / 100}
+                />
+              </linearGradient>
+            </defs>
+          )}
+          <path
+            d={DECORATOR_PATHS[properties.decorator_bottom]}
+            fill={decoratorFill(properties.decorator_bottom_color, properties.decorator_bottom_opacity, `heading-bottom-${block.uuid}`)}
+          />
+        </svg>
+      )}
+    </section>
+  )
+}

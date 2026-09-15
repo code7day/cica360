@@ -21,6 +21,14 @@ if (!homeSummary) {
 const page = await getPage(homeSummary.slug);
 ---
 
-<BaseLayout title={page.title} description={page.meta?.seo_description}>
+<BaseLayout
+  title={page.title}
+  description={page.meta?.seo_description}
+  seoTitle={page.meta?.seo_title}
+  keywords={page.meta?.seo_keywords}
+  ogTitle={page.meta?.og_title}
+  ogDescription={page.meta?.og_description}
+  ogImage={page.meta?.og_image_rect ?? page.meta?.og_image_square}
+>
   {page.blocks.map((block) => <BlockRenderer block={block} />)}
 </BaseLayout>

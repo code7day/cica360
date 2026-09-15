@@ -257,7 +257,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
 {
   slides.length > 0 && (
     <section
-      class="bg-cicaindigo-900 relative h-screen w-full overflow-hidden text-white"
+      class="bg-cicaindigo-900 relative h-screen w-full touch-pan-y overflow-hidden text-white"
       data-hero-slider
       style={`--hero-interval: ${intervalMs}ms;`}
     >
@@ -376,8 +376,19 @@ if (slides.length === 0 && import.meta.env.DEV) {
               "por ahora", el Tech Lead puede ajustarlo): `py-[120px]`
               base (mobile + tablets chicas, <3md/960px) y `3md:py-[150px]`
               desde 960px en adelante.
+
+              CORRECCIÓN 2026-09-10 (pedido puntual, "solo tablet grandes"):
+              "solo un ajuste... solo para las resoluciones de tablet 3md:
+              y 4md:... aumentar un poco el padding en Y de 150px a 240px"
+              — el rango 3md–4md (960-1079px, hasta que `lg`/1080px toma
+              el control) sube a `py-[240px]`; desde `lg` en adelante
+              vuelve al valor original de siempre (`150px`, sin cambios
+              reales en desktop real) vía el `lg:py-[150px]` explícito de
+              abajo — sin este reset, el `240px` se hubiera quedado
+              corriendo indefinidamente en vez de acotarse a "solo esas
+              resoluciones".
             */}
-            <div class={`3md:py-[150px] relative z-10 flex h-full py-[120px] text-center ${positionContainerYClasses(slide.properties)}`}>
+            <div class={`3md:py-[240px] lg:py-[150px] relative z-10 flex h-full py-[120px] text-center ${positionContainerYClasses(slide.properties)}`}>
               {/*
                 Caja "boxed" de contenido (2026-08-31, pedido del Tech
                 Lead): antes el texto quedaba pegado a los extremos del
@@ -437,9 +448,19 @@ if (slides.length === 0 && import.meta.env.DEV) {
                 correctamente sobre el viewport completo (matemáticamente
                 igual a centrar sobre una caja ya centrada), así que esto
                 no afecta a los slides con posición center/right.
+
+                CORRECCIÓN 2026-09-10 (pedido puntual, "solo tablet
+                grandes"): "el padding actual del siguiente div anidado
+                tiene padding en X de 100px cambiar a 150px" — mismo
+                alcance acotado que el `py` del div padre: SOLO en el
+                rango 3md–4md (960-1079px) sube a `px-[150px]`;
+                `lg:px-[100px]` explícito lo devuelve al valor original
+                desde 1080px en adelante (desktop real sin cambios), y
+                `3xl:px-[200px]` (1536px+) sigue pisando por encima de
+                ambos sin tocar, como ya hacía antes.
               */}
               <div
-                class={`3md:px-[100px] 3xl:max-w-none 3xl:px-[200px] mx-auto flex w-full max-w-[1200px] justify-center px-[60px] ${positionContainerXClasses(slide.properties)}`}
+                class={`3md:px-[150px] lg:px-[100px] 3xl:max-w-none 3xl:px-[200px] mx-auto flex w-full max-w-[1200px] justify-center px-[60px] ${positionContainerXClasses(slide.properties)}`}
               >
                 {/*
                   `align_content` (2026-08-30): alineación del texto/CTA
@@ -449,9 +470,40 @@ if (slides.length === 0 && import.meta.env.DEV) {
                   cualquier otro item del eje transversal).
                 */}
                 <div class={`flex w-full max-w-2xl flex-col items-center text-center ${alignContentClasses(slide.properties)}`}>
+                  {
+                    /* CORRECCIÓN 2026-09-10 (pedido puntual, "solo tablet
+                     * grandes"): "agrandar un poco proporcional los textos y
+                     * boton cta, pretitle, title, subtitle" — SOLO en el
+                     * rango `3md`–`4md` (960-1079px), un paso intermedio de
+                     * tamaño entre lo que ya había en `sm` y lo que ya había
+                     * en `lg` (o, si no existía escalón en `lg`, un reset
+                     * explícito de vuelta al valor pre-existente para que el
+                     * aumento no se filtre a desktop real):
+                     * - Pretitle: `text-sm` (14px) → `3md:text-base` (16px),
+                     *   `lg:text-sm` revierte a 14px desde 1080px (no tenía
+                     *   escalón propio antes).
+                     * - Título: ya tenía `sm:text-5xl` (48px) → `lg:text-hero`
+                     *   (64px) sin escalón intermedio — se agrega
+                     *   `3md:text-[56px]` (un paso entre 48 y 64); el
+                     *   `lg:text-hero` YA EXISTENTE lo cubre/resetea solo,
+                     *   sin necesidad de agregar nada nuevo ahí.
+                     * - Subtítulo: `text-xl` (20px) → `3md:text-2xl` (24px),
+                     *   `lg:text-xl` revierte a 20px desde 1080px (no tenía
+                     *   escalón propio antes).
+                     * - CTA (botón + label + ícono): ver comentario junto al
+                     *   `<a>` más abajo.
+                     * `slide.description`/"2 o 3 puntos" mencionados en el
+                     * mismo pedido NO EXISTEN en el modelo de datos actual
+                     * del slide (`pretitle`/`title`/`subtitle`/CTA solamente,
+                     * ver `SlideProperties` — sin un campo `description` ni
+                     * una lista de puntos) — no se inventó ningún campo
+                     * nuevo; pendiente aclarar con el Tech Lead si se refería
+                     * a otro bloque o si hace falta agregar esos campos.
+                     */
+                  }
                   {slide.pretitle && (
                     <p
-                      class="hero-anim-play text-cicagold-500 mb-3 text-sm font-semibold tracking-[0.2em] uppercase"
+                      class="hero-anim-play text-cicagold-500 mb-3 text-sm font-semibold tracking-[0.2em] uppercase 3md:text-base lg:text-sm"
                       data-hero-anim="pretitle"
                     >
                       {slide.pretitle}
@@ -464,11 +516,20 @@ if (slides.length === 0 && import.meta.env.DEV) {
                   Animación de entrada (2026-08-30, fija para todo el MVP,
                   no configurable): fade + scale, siempre la primera en
                   jugar — ver `hero-anim-*` en el <style> de más abajo.
+
+                  Corrección 2026-09-06: `leading-[0.95]` → `leading-[1.05]`
+                  (todos los breakpoints) — pedido del Tech Lead: "en el hero
+                  volvemos a corregir, solo en el titulo aumentar solo un
+                  poquito el leading". Título de 2 líneas quedaba con muy
+                  poco aire entre renglones a este peso/tamaño (font-black
+                  italic); un aumento chico de leading no afecta el resto del
+                  layout del Hero (el contenedor no tiene alto fijo atado al
+                  título).
                 */}
                   {slide.title &&
                     (index === 0 ? (
                       <h1
-                        class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
+                        class="hero-anim-play font-display lg:text-hero text-4xl leading-[1.05] font-black italic sm:text-5xl 3md:text-[56px]"
                         data-hero-anim="title"
                       >
                         {slide.title}
@@ -477,7 +538,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
                       // Solo el primer slide usa <h1> (SEO: un único heading principal por
                       // página) — el resto son <h2> con el mismo estilo visual.
                       <h2
-                        class="hero-anim-play font-display lg:text-hero text-4xl leading-[0.95] font-black italic sm:text-5xl"
+                        class="hero-anim-play font-display lg:text-hero text-4xl leading-[1.05] font-black italic sm:text-5xl 3md:text-[56px]"
                         data-hero-anim="title"
                       >
                         {slide.title}
@@ -485,7 +546,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
                     ))}
                   {/* Body Large (Design System, pág. Tipografía): Lato Light / 20px */}
                   {slide.subtitle && (
-                    <p class="hero-anim-play mt-4 text-xl font-light text-white/90" data-hero-anim="subtitle">
+                    <p class="hero-anim-play mt-4 text-xl font-light text-white/90 3md:text-2xl lg:text-xl" data-hero-anim="subtitle">
                       {slide.subtitle}
                     </p>
                   )}
@@ -503,17 +564,88 @@ if (slides.length === 0 && import.meta.env.DEV) {
                   moderado `rounded-lg`, no pill. Mayúsculas vía CSS
                   (`uppercase`), el texto real del CMS queda en su case
                   original (accesibilidad/semántica).
+
+                  Corrección 2026-09-06: el label pasa de `text-base` fijo
+                  (16px en TODOS los breakpoints) a `text-sm leading-6`
+                  (14px) base con `sm:text-base sm:leading-7` (16px, el
+                  valor original del spec) desde 640px — pedido del Tech
+                  Lead: "reduce proporcional el texto label del CTA en
+                  mobile". El botón (`h-14 px-8`) no cambia de tamaño, solo
+                  el texto adentro se reduce en mobile para que no se vea
+                  desproporcionado frente al resto del contenido a esa
+                  escala.
+
+                  2da corrección 2026-09-06 (mismo día, con captura del
+                  resultado en mobile real): "necesitamos un poco mas el
+                  texto del boton CTA, el padding o la altura tambien pero
+                  solo un poquito" — el paso anterior (14px) quedó corto.
+                  Se sube un peldaño intermedio en mobile: `text-sm` (14px)
+                  → `text-[15px] leading-[26px]` (no hay escala estándar de
+                  Tailwind entre 14 y 16px), y el botón crece apenas:
+                  `h-14` (56px) → `h-[60px]`, `px-8` (32px) → `px-9` (36px).
+                  Desde `sm` (640px) sigue en el valor original del spec
+                  (`sm:text-base sm:leading-7`, sin tocar altura/padding ahí
+                  — a esa escala el botón ya se veía bien).
+
+                  3ra corrección 2026-09-06 (mismo día, nueva captura): "sigue
+                  el CTA con el label en 2 lineas, reducir mas" — a 15px
+                  "EMPEZAR A PLANIFICAR" (uppercase, bold, + ícono) seguía sin
+                  entrar en una línea en mobile angosto. Se corrige el
+                  problema real (ancho disponible, no solo tamaño de fuente):
+                  además de bajar el texto a `text-xs leading-[18px]` (12px),
+                  se reduce todo lo que compite por ese ancho — `px-9`→`px-3`
+                  (4ta corrección, mismo día: "reducir el padding X en
+                  mobile" — bajó otro escalón, de `px-5` a `px-3`, tras ver
+                  en DevTools el box model del botón con mucho aire
+                  horizontal sobrante),
+                  `gap-2`→`gap-1.5`, e ícono `size={24}` fijo → clase
+                  responsive `size-4 sm:size-6` (16px en mobile, 24px desde
+                  `sm`, mismo patrón que los botones prev/next del carousel
+                  más abajo en este archivo). Se agrega `whitespace-nowrap`
+                  explícito como garantía adicional contra el wrap. La altura
+                  (`h-[60px]`) NO se toca — el wrap es un problema de ancho,
+                  no de alto. Desde `sm` (640px) el botón sigue en su tamaño
+                  original sin cambios (`sm:px-8`, ícono a 24px, sin
+                  `sm:gap-*` porque `gap-1.5` ya es chico de por sí y no
+                  desentona en pantallas grandes).
+
+                  5ta corrección 2026-09-06 (mismo día): "la altura que sea
+                  de 48px en mobile" — pedido puntual del Tech Lead, `h-[60px]`
+                  → `h-12` (48px, valor estándar de Tailwind). Desde `sm`
+                  (640px) sigue en `sm:h-14` (56px), sin cambios.
+
+                  6ta corrección 2026-09-06 (mismo día): "dejar el Padding X:
+                  `px-9` → `px-5`" — pedido puntual del Tech Lead, revierte
+                  la 4ta corrección (`px-5`→`px-3`) un escalón: queda en
+                  `px-5` (20px por lado), más aire que `px-3` sin volver al
+                  `px-9` original.
+
+                  CORRECCIÓN 2026-09-10 (pedido puntual, "solo tablet
+                  grandes", ver comentario completo junto al div del
+                  contenido más arriba): "agrandar un poco proporcional...
+                  boton cta" — SOLO en el rango `3md`–`4md` (960-1079px),
+                  un paso arriba del valor ya establecido en `sm` (640px+):
+                  alto `sm:h-14` (56px) → `3md:h-16` (64px); padding-x
+                  `sm:px-8` (32px) → `3md:px-10` (40px); texto `sm:text-base
+                  sm:leading-7` (16/28px) → `3md:text-lg 3md:leading-8`
+                  (18/32px); ícono `sm:size-6` (24px) → `3md:size-7` (28px).
+                  Ninguno de estos 4 tenía un escalón propio en `lg` antes
+                  de este cambio — se agrega `lg:h-14 lg:px-8 lg:text-base
+                  lg:leading-7 lg:size-6` explícito para devolver los 4 al
+                  valor original desde 1080px en adelante (desktop real sin
+                  cambios), igual que el resto de los ajustes de esta misma
+                  vuelta.
                 */}
                   {slide.ctaLabel && slide.ctaHref && (
                     <a
                       href={slide.ctaHref}
                       target={slide.ctaTarget}
                       rel={slide.ctaTarget === '_blank' ? 'noopener noreferrer' : undefined}
-                      class="hero-anim-play border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900 mt-8 inline-flex h-14 items-center justify-center gap-2 rounded-lg border px-8 text-base leading-7 font-bold uppercase shadow-xl transition"
+                      class="hero-anim-play border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900 mt-8 inline-flex h-12 items-center justify-center gap-1.5 rounded-lg border px-5 text-xs leading-[18px] font-bold whitespace-nowrap uppercase shadow-xl transition sm:h-14 sm:px-8 sm:text-base sm:leading-7 3md:h-16 3md:px-10 3md:text-lg 3md:leading-8 lg:h-14 lg:px-8 lg:text-base lg:leading-7"
                       data-hero-anim="cta"
                     >
                       {slide.ctaLabel}
-                      <Icon name="ph:caret-right" size={24} aria-hidden="true" />
+                      <Icon name="ph:caret-right" class="size-4 sm:size-6 3md:size-7 lg:size-6" aria-hidden="true" />
                     </a>
                   )}
                 </div>
@@ -597,6 +729,14 @@ if (slides.length === 0 && import.meta.env.DEV) {
       {slides.length > 1 && (
         <>
           {/*
+            `cursor-pointer` (2026-09-10, pedido del Tech Lead: "en los
+            enlaces del navbar y donde exista un enlace o action deberia
+            de mostrarse el cursor-pointer") en los 3 `<button>` de acá
+            abajo (prev/next/dots) — los `<button>` NO reciben
+            `cursor: pointer` por defecto en ningún navegador (a diferencia
+            de los `<a href>`, que sí), así que sin esta clase mostraban el
+            cursor de flecha normal pese a ser 100% clickeables.
+
             Tamaño reducido en mobile/tablets chicas (2026-08-31, pedido
             del Tech Lead con captura): `h-14 w-14` (56px) + ícono 32px
             quedaba grande/pesado en pantallas chicas. Círculo baja a
@@ -608,7 +748,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
           */}
           <button
             type="button"
-            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 left-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6"
+            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 left-4 z-20 flex h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6"
             data-hero-prev
             aria-label="Slide anterior"
           >
@@ -616,7 +756,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
           </button>
           <button
             type="button"
-            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 right-4 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6"
+            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 right-4 z-20 flex h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6"
             data-hero-next
             aria-label="Slide siguiente"
           >
@@ -627,7 +767,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
             {slides.map((_, index) => (
               <button
                 type="button"
-                class="data-[active=true]:bg-cicagold-500 h-2 w-2 rounded-full bg-white/50 transition-all data-[active=true]:w-6"
+                class="data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-white/50 transition-all data-[active=true]:w-6"
                 data-hero-dot
                 data-active={index === 0 ? 'true' : 'false'}
                 role="tab"
@@ -807,6 +947,83 @@ if (slides.length === 0 && import.meta.env.DEV) {
       root.addEventListener('mouseleave', start);
       root.addEventListener('focusin', stop);
       root.addEventListener('focusout', start);
+
+      // 2026-09-08, pedido del Tech Lead ("el HERO slider debería soportar
+      // swipe"): antes solo tenía botones prev/next + dots, sin nada de
+      // gesto táctil/drag — a diferencia de `Testimonials.astro`/
+      // `Logos.astro` (que son un track con scroll-snap nativo, arrastrable
+      // 1:1), acá cada slide es una capa `absolute inset-0` con crossfade
+      // por opacidad — no hay un "track" que arrastrar en paralelo con el
+      // dedo. Se implementa como SWIPE POR UMBRAL (sin seguimiento visual
+      // en vivo durante el gesto, deliberado — añadir un "arrastre" 1:1
+      // sobre 2 capas superpuestas por opacidad es una reescritura mayor
+      // del mecanismo de transición, fuera de alcance de este pedido):
+      // se mide el desplazamiento horizontal entre `pointerdown` y
+      // `pointerup`; si supera `SWIPE_THRESHOLD_PX` en dirección horizontal
+      // (con "direction-locking" — mismo criterio ya usado en el historial
+      // de `Features.astro` para no pelear con el scroll vertical de la
+      // página: se compara `|ΔX|` vs `|ΔY|` una sola vez por gesto, recién
+      // cuando el movimiento supera un mínimo de 10px), se llama a
+      // `show()` como si fuera el botón prev/next. Los drags que arrancan
+      // sobre un control interactivo (dots, flechas, el CTA del slide) se
+      // ignoran por completo — su click normal sigue funcionando sin
+      // interferencia. `touch-pan-y` en la clase de la `<section>` (ver
+      // arriba) le dice al navegador que NO tome el gesto horizontal por
+      // su cuenta (evita pelear con este handler) pero sí deje pasar el
+      // scroll vertical nativo de la página.
+      const SWIPE_THRESHOLD_PX = 50;
+      let isPointerDown = false;
+      let dragStartX = 0;
+      let dragStartY = 0;
+      let dragLocked: 'horizontal' | 'vertical' | null = null;
+
+      function onPointerDown(event: PointerEvent) {
+        if ((event.target as HTMLElement).closest('a, button')) return;
+        isPointerDown = true;
+        dragLocked = null;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+        stop();
+      }
+
+      function onPointerMove(event: PointerEvent) {
+        if (!isPointerDown) return;
+        const deltaX = event.clientX - dragStartX;
+        const deltaY = event.clientY - dragStartY;
+
+        if (!dragLocked && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+          dragLocked = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical';
+        }
+
+        // Solo se bloquea el comportamiento nativo (scroll vertical de la
+        // página) cuando el gesto YA se determinó horizontal — un swipe
+        // vertical debe seguir scrolleando la página con total libertad.
+        if (dragLocked === 'horizontal') event.preventDefault();
+      }
+
+      function onPointerUp(event: PointerEvent) {
+        if (!isPointerDown) return;
+        isPointerDown = false;
+
+        if (dragLocked === 'horizontal') {
+          const deltaX = event.clientX - dragStartX;
+          if (Math.abs(deltaX) > SWIPE_THRESHOLD_PX) {
+            // Swipe a la izquierda (deltaX negativo) → siguiente slide;
+            // swipe a la derecha → anterior. Mismo sentido que cualquier
+            // carousel de fotos estándar (arrastrar el contenido hacia
+            // donde "se va" el dedo).
+            show(current + (deltaX < 0 ? 1 : -1));
+          }
+        }
+
+        dragLocked = null;
+        start();
+      }
+
+      root.addEventListener('pointerdown', onPointerDown);
+      root.addEventListener('pointermove', onPointerMove, { passive: false });
+      root.addEventListener('pointerup', onPointerUp);
+      root.addEventListener('pointercancel', onPointerUp);
 
       start();
     });

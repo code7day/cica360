@@ -1,7 +1,9 @@
 ---
 import type { GetStaticPaths } from 'astro';
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import BlockRenderer from '../../components/blocks/BlockRenderer.astro';
 import { getAllServices, getService } from '../../lib/api';
+import { Icon } from 'astro-icon/components';
 
 /**
  * Detalle público de un `Service` (2026-09-02, ver ADR-044) — primera vez
@@ -12,13 +14,33 @@ import { getAllServices, getService } from '../../lib/api';
  * index.astro` acá, porque `/servicios` ya lo sirve esa página vía
  * bloques; crear un `index.astro` acá lo taparía).
  *
- * Nivel de terminado visual: igual al de `blog/[slug].astro` (stub
- * funcional con Tailwind genérico, no un rediseño pixel-perfect del
- * mockup de referencia) — la maquetación fina de "¿Qué ofrecemos?"/
- * "Coberturas" queda para una pasada de diseño aparte (ver CLAUDE.md de
- * este repo: estilos visuales de bloques son de Antigravity/Gemini; esto
- * es una página nueva, no un bloque, pero se mantiene el mismo criterio
- * de "funcional primero" para no invadir ese trabajo a medias).
+ * 2026-09-14, pasada de diseño pedida directo por el Tech Lead (capturas
+ * reales del detalle de "Seguros Financiero" en CICA360) — cruza el límite
+ * Claude=datos/Antigravity=visual descrito en CLAUDE.md de este repo, pero
+ * a pedido explícito y con spec detallada (mismo criterio ya usado en
+ * Hero.astro/RichText.astro para casos puntuales). Reusa 3 piezas YA
+ * establecidas en el sitio en vez de reinventarlas:
+ *   1. El decorador `wave` (mismo path SVG que `DECORATOR_PATHS.wave` de
+ *      `RichText.astro` / `CARD_WAVE_PATH` de `ServicesGrid.astro` — "no
+ *      reinventado, mismo shape en todo el sitio").
+ *   2. Las banderas de país flotando sobre el wave (`/flags/flag_{iso}.webp`,
+ *      mismo `ring-[3px] ring-white shadow-md` que ya usa `ServicesGrid.astro`
+ *      para las cards del catálogo).
+ *   3. La flecha de scroll del párrafo introductorio (`ph:caret-down`,
+ *      `text-cicagold-500 animate-bounce`, mismo ícono/color que
+ *      `properties.show_scroll_indicator` en `RichText.astro`).
+ * Colores del header/tabs: tokens del Design System oficial ya documentados
+ * en `global.css` ("Hero / CTA Banner → cicaindigo-900", "Tab Activo →
+ * cicaindigo-400", "Sección Clara → #F5F5F7") — no inventados para esta
+ * página.
+ *
+ * Nivel de terminado: sigue siendo un primer pase funcional fiel al mockup
+ * compartido, no una pasada final de pulido pixel-perfect (valores exactos
+ * de la escala de altura del header, por ejemplo, son un criterio propio
+ * razonado — ver `HEADER_HEIGHT_BASE`/`_MD`/`_LG` más abajo — sin
+ * precedente previo en el sitio para copiar 1:1). Ajustes finos de
+ * espaciado quedan para revisión visual en un entorno real (este agente no
+ * tiene navegador con preview local disponible).
  */
 export const getStaticPaths = (async () => {
   const services = await getAllServices();
@@ -33,73 +55,429 @@ if (!slug) {
 
 const service = await getService(slug);
 const { content } = service;
+
+const headerType = service.properties?.header_type === 'destacado' ? 'destacado' : 'normal';
+const showDecorative = service.properties?.show_decorative_detail !== false;
+
+/**
+ * Altura del header por `properties.header_type` (pedido del Tech Lead:
+ * "el header es mas alto, a la mitad de altura (50vh)... Tipo header:
+ * Normal | Destacado, siendo el destacado mas grande... aumentar unos 25%
+ * de la altura del header a cada breakpoint configurado"). Sin precedente
+ * de una escala de altura por breakpoint para headers en el sitio (el Hero
+ * de home usa `h-screen` fijo, ver Hero.astro) — se define acá una escala
+ * propia de 3 pasos (base/md/lg, los mismos nombres de breakpoint que ya
+ * usa el resto del sitio), anclada en el ~50vh pedido para desktop (`lg`).
+ * Cada paso lleva además un PISO en px (`floor`): un 50vh puro se vuelve
+ * inusable en celulares bajos con pretitle+título+subtítulo+padding — el
+ * `max()` en el `<style>` de abajo aplica el que sea mayor de los dos.
+ * "Destacado" = mismos vh Y piso, × `HEADER_HEIGHT_MULTIPLIER` en cada
+ * paso (no solo el vh — si no, el piso terminaría dominando y "Destacado"
+ * se vería igual que "Normal" en mobile).
+ */
+const HEADER_HEIGHT_MULTIPLIER: Record<'normal' | 'destacado', number> = {
+  normal: 1,
+  destacado: 1.25,
+};
+const heightMultiplier = HEADER_HEIGHT_MULTIPLIER[headerType];
+
+/**
+ * Altura del header del detalle de servicio (destacado frente a Heading.astro,
+ * con piso mínimo de 250px para presencia visual del hero banner y banderas):
+ * - Base (<540px): 52vh, piso 250px
+ * - sm (>=540px): 46vh, piso 250px
+ * - md (>=768px): 38vh, piso 250px
+ * - lg (>=1080px): 52vh, piso 250px (en 1366x660 = ~343px)
+ */
+const HEADER_HEIGHT_BASE = { vh: 52, floorPx: 250 };
+const HEADER_HEIGHT_SM = { vh: 46, floorPx: 250 };
+const HEADER_HEIGHT_MD = { vh: 38, floorPx: 250 };
+const HEADER_HEIGHT_LG = { vh: 52, floorPx: 250 };
+
+const headerHeightStyle = [
+  `--header-vh-base: ${Math.round(HEADER_HEIGHT_BASE.vh * heightMultiplier)}vh`,
+  `--header-floor-base: ${Math.round(HEADER_HEIGHT_BASE.floorPx * heightMultiplier)}px`,
+  `--header-vh-sm: ${Math.round(HEADER_HEIGHT_SM.vh * heightMultiplier)}vh`,
+  `--header-floor-sm: ${Math.round(HEADER_HEIGHT_SM.floorPx * heightMultiplier)}px`,
+  `--header-vh-md: ${Math.round(HEADER_HEIGHT_MD.vh * heightMultiplier)}vh`,
+  `--header-floor-md: ${Math.round(HEADER_HEIGHT_MD.floorPx * heightMultiplier)}px`,
+  `--header-vh-lg: ${Math.round(HEADER_HEIGHT_LG.vh * heightMultiplier)}vh`,
+  `--header-floor-lg: ${Math.round(HEADER_HEIGHT_LG.floorPx * heightMultiplier)}px`,
+].join('; ');
+
+/**
+ * Mismo path SVG que `DECORATOR_PATHS.wave` en `RichText.astro` /
+ * `CARD_WAVE_PATH` en `ServicesGrid.astro` — no reinventado. Acá el relleno
+ * es SIEMPRE blanco y no configurable (a diferencia de `decorator_bottom`
+ * de un bloque, que sí lo es): es el mismo criterio ya documentado en
+ * `ServicesGrid.astro` para el wave de cada card, "rol puramente
+ * decorativo de transición" hacia una sección que siempre tiene fondo
+ * blanco.
+ */
+const WAVE_PATH = 'M0,38 C 160,50 250,56 324,56 C 420,56 550,45 720,35 C 850,28 950,18 1044,18 C 1150,18 1300,30 1440,48 L1440,64 L0,64 Z';
+
+const hasOffers = Boolean(content.offers?.length);
+const hasCoverages = Boolean(content.coverages?.length);
+const hasTabs = hasOffers && hasCoverages;
+
+/**
+ * 2026-09-14, pedido del Tech Lead: `Service` gana una 2da imagen opcional
+ * (`image_detail`, más panorámica/apaisada) pensada para este header — la
+ * principal (`image`) sigue siendo la miniatura del catálogo (usada en
+ * `ServicesGrid.astro`, sin cambios ahí). "usar la principal si es que no
+ * tiene la opcional... para el header del detalle" — el fallback se
+ * resuelve acá, no en el backend (mismo criterio que la cadena de
+ * `ogImage` de `BaseLayout` más abajo).
+ */
+const headerImage = service.image_detail ?? service.image;
 ---
 
-<BaseLayout title={service.title} description={service.meta?.seo_description ?? content.intro}>
-  <article class="mx-auto max-w-3xl px-4 py-16">
-    {service.image?.url && (
-      <img src={service.image.url} alt={service.image.alt_text ?? ''} class="mb-8 w-full rounded" />
-    )}
+<BaseLayout
+  title={service.title}
+  description={service.meta?.seo_description ?? content.intro}
+  seoTitle={service.meta?.seo_title}
+  keywords={service.meta?.seo_keywords}
+  ogTitle={service.meta?.og_title}
+  ogDescription={service.meta?.og_description ?? content.intro}
+  ogImage={service.meta?.og_image_rect ?? service.meta?.og_image_square ?? service.image}
+>
+  <section class="service-header bg-cicaindigo-900 relative w-full overflow-hidden text-white" style={headerHeightStyle}>
+    {headerImage?.url && <img src={headerImage.url} alt={headerImage.alt_text ?? ''} class="absolute inset-0 h-full w-full object-cover" />}
 
-    {service.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{service.pretitle}</p>}
-    <h1 class="text-4xl font-bold">{service.title}</h1>
-    {service.subtitle && <p class="mt-2 text-lg text-gray-600">{service.subtitle}</p>}
+    {/* Capa de contraste general sutil para toda la imagen */}
+    <div class="pointer-events-none absolute inset-0 bg-cicaindigo-950/20" aria-hidden="true"></div>
 
-    {service.countries.length > 0 && (
-      <ul class="mt-4 flex flex-wrap gap-2">
-        {service.countries.map((country) => (
-          <li class="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600">{country.name}</li>
-        ))}
-      </ul>
-    )}
+    {/*
+      Capa con degradado en la parte superior reducida (específica del header de detalle):
+      Cubre el 55% superior (en vez del 70%) y comienza a desvanecerse antes (al 20%
+      en vez del 35%), garantizando contraste bajo el navbar fijo de 60px pero
+      dejando que la fotografía del servicio gane mayor luminosidad y claridad natural.
+    */}
+    <div
+      class="pointer-events-none absolute inset-x-0 top-0 h-[55%]"
+      style="background: linear-gradient(to bottom, #2D2C4D 0%, #2D2C4D 20%, color-mix(in srgb, #2D2C4D 0%, transparent) 100%); opacity: 0.85;"
+      aria-hidden="true"
+    >
+    </div>
 
-    {content.intro && <p class="mt-8 text-lg leading-relaxed">{content.intro}</p>}
+    {/*
+      Contenedor del titular centrado verticalmente:
+      Compensa la altura del navbar fijo (52px mobile / 60px desktop) que se sobrepone
+      al header, ubicando el centro del bloque de texto exactamente en el punto medio
+      visible descontando dichos 60px (mismo principio geométrico de Heading.astro).
+    */}
+    <div class="relative z-10 flex h-full w-full flex-col items-center justify-center px-4 pt-[52px] pb-0 text-center md:px-10 3md:pt-[60px]">
+      {
+        /* Mismo tope de 1200px que el resto del cuerpo (spec 2026-09-14) — antes quedaba en max-w-3xl (768px), angosto contra el mockup a 1440px. */
+      }
+      <div class="mx-auto w-full max-w-[1200px]">
+        {service.pretitle && <p class="text-cicagold-400 mb-1 text-sm font-light tracking-[0.2em] uppercase opacity-80">{service.pretitle}</p>}
+        <h1 class="text-[2rem] leading-tight font-black sm:text-[2.5rem] md:text-4xl lg:text-5xl">{service.title}</h1>
+        {service.subtitle && (
+          <p class="mx-auto mt-1 max-w-2xl text-base leading-snug font-light opacity-90 sm:text-lg sm:leading-normal">{service.subtitle}</p>
+        )}
+      </div>
+    </div>
 
-    {content.offers && content.offers.length > 0 && (
-      <section class="mt-10">
-        <h2 class="text-2xl font-semibold">¿Qué ofrecemos?</h2>
-        <ul class="mt-4 flex flex-col gap-3">
-          {content.offers.map((offer) => (
-            <li class="flex gap-2">
-              <span aria-hidden="true">✓</span>
-              <p><strong>{offer.highlight}</strong> {offer.text}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    )}
+    {/* Decorador wave inferior — permanente como transición a la sección blanca */}
+    <svg
+      class="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-12 w-full md:h-16"
+      viewBox="0 0 1440 64"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path d={WAVE_PATH} fill="white" />
+    </svg>
 
-    {content.coverages && content.coverages.length > 0 && (
-      <section class="mt-10">
-        <h2 class="text-2xl font-semibold">Coberturas</h2>
-        <div class="mt-4 flex flex-col gap-2">
-          {content.coverages.map((coverage) => (
-            <details class="rounded border border-gray-200 p-4">
-              <summary class="cursor-pointer font-medium">{coverage.label}</summary>
-              {coverage.intro && <p class="mt-2 text-sm text-gray-600">{coverage.intro}</p>}
-              {coverage.items.length > 0 && (
-                <ul class="mt-2 list-disc pl-5 text-sm text-gray-600">
-                  {coverage.items.map((item) => <li>{item}</li>)}
-                </ul>
-              )}
-            </details>
-          ))}
+    {
+      /* Banderas de país flotantes — condicionadas exclusivamente por properties.show_decorative_detail */
+      showDecorative && service.countries.length > 0 && (
+        <div class="pointer-events-none absolute inset-x-0 bottom-3 z-30 md:bottom-4" aria-hidden="true">
+          <div class="mx-auto flex max-w-[1200px] justify-end -space-x-2 px-4 md:px-10">
+            {service.countries.map((country) => (
+              <img
+                src={`/flags/flag_${country.iso}.webp`}
+                alt={country.name}
+                class="size-9 rounded-full object-cover shadow-md ring-[3px] ring-white md:size-11"
+                loading="lazy"
+              />
+            ))}
+          </div>
+        </div>
+      )
+    }
+  </section>
+
+  {
+    /*
+      2026-09-14, fix de ancho (pedido del Tech Lead con captura a 1440px de
+      referencia): "el ancho del cuerpo del contenido no debe de pasar del
+      1200px... con los tabs centrados" — `max-w-[1200px]` explícito (no un
+      paso de la escala nativa de Tailwind, que no tiene 1200 exacto; mismo
+      criterio ya usado en `RichText.astro` para su property `content_width`,
+      "spec exacta del Tech Lead", valor arbitrario en vez de redondear a
+      `max-w-6xl`/`max-w-7xl`). Compartido por esta sección, la de tabs y la
+      de "¿Por qué elegirnos?"/tip de abajo — mismo contenedor centrado
+      (`mx-auto`) en las 3, para que el borde izquierdo/derecho del "cuerpo"
+      quede alineado en toda la página.
+    */
+  }
+  {
+    content.intro && (
+      <section class="relative w-full bg-white">
+        {/*
+          Plantilla estática del detalle de servicio (optimizada para la página):
+          - Padding vertical simétrico: 40px (md:py-10) / 32px mobile (py-8)
+          - Padding en X reducido: px-4 sm:px-6 (sin lg:px-8 de 32px)
+          - Contenido interior: max-w-[960px] 3xl:max-w-[1100px] mx-auto
+          - Tipografía responsiva: prose w-full max-w-none font-normal text-base text-gray-600 md:text-sm 3md:text-base
+          - Scroll indicator con mt-3 dentro del stack flex flex-col gap-6
+        */}
+        <div class="mx-auto max-w-[1280px] px-4 sm:px-6 py-8 md:py-10">
+          <div class="mx-auto flex flex-col gap-6 max-w-[960px] 3xl:max-w-[1100px] text-center items-center">
+            <div
+              class="prose w-full max-w-none font-normal text-base text-gray-600 md:text-sm 3md:text-base [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_strong]:text-gray-800 [&_b]:font-bold [&_b]:text-gray-800"
+              set:html={content.intro.includes('<p>') ? content.intro : `<p>${content.intro}</p>`}
+            />
+
+            <div class="mt-3 flex w-full justify-center" aria-hidden="true">
+              <Icon name="ph:caret-down" class="text-cicagold-500 size-6 animate-bounce" />
+            </div>
+          </div>
         </div>
       </section>
-    )}
+    )
+  }
 
-    {content.why_choose_us?.text && (
-      <section class="mt-10">
-        <h2 class="text-2xl font-semibold">{content.why_choose_us.title ?? '¿Por qué elegirnos?'}</h2>
-        <p class="mt-4 text-gray-600">{content.why_choose_us.text}</p>
+  {
+    (hasOffers || hasCoverages) && (
+      <section class="relative z-10 px-4" data-service-tabs>
+        <div class="mx-auto max-w-[1200px]">
+          {hasTabs && (
+            <div class="flex justify-center">
+              <button
+                type="button"
+                class="inline-flex h-10 cursor-pointer items-center justify-center rounded-t-full px-8 3md:px-10 2xl:px-14 text-sm md:text-[0.95rem] font-semibold transition-colors duration-150 bg-cicaindigo-50 text-cicaindigo-400 hover:bg-cicaindigo-100 aria-selected:bg-cicaindigo-400 aria-selected:text-white aria-selected:hover:bg-cicaindigo-400"
+                data-tab-trigger="offers"
+                aria-selected="true"
+              >
+                ¿Qué ofrecemos?
+              </button>
+              <button
+                type="button"
+                class="inline-flex h-10 cursor-pointer items-center justify-center rounded-t-full px-8 3md:px-10 2xl:px-14 text-sm md:text-[0.95rem] font-semibold transition-colors duration-150 bg-cicaindigo-50 text-cicaindigo-400 hover:bg-cicaindigo-100 aria-selected:bg-cicaindigo-400 aria-selected:text-white aria-selected:hover:bg-cicaindigo-400"
+                data-tab-trigger="coverages"
+                aria-selected="false"
+              >
+                Coberturas
+              </button>
+            </div>
+          )}
+
+          <div class="bg-cicagray-50 rounded-2xl border-t-2 border-cicaindigo-400 px-6 md:px-10 py-10 md:py-[60px] 3md:py-20">
+            {hasOffers && (
+              <div data-tab-panel="offers" hidden={hasTabs ? false : undefined}>
+                {hasTabs === false && <h2 class="text-cicaindigo-500 mb-4 text-xl font-bold">¿Qué ofrecemos?</h2>}
+                <ul class="flex flex-col gap-3.5 sm:gap-3">
+                  {content.offers!.map((offer) => (
+                    <li class="flex items-start gap-2.5 sm:gap-2">
+                      <Icon name="ph:check-circle-fill" class="text-cicagold-500 mt-0.5 size-5 shrink-0" aria-hidden="true" />
+                      <p class="text-sm md:text-base leading-relaxed">
+                        <strong class="text-cicaindigo-500 font-semibold">{offer.highlight}</strong>{' '}
+                        <span class="text-cicagray-700">{offer.text}</span>
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {hasCoverages && (
+              <div data-tab-panel="coverages" hidden={hasTabs}>
+                {hasTabs === false && <h2 class="text-cicaindigo-500 mb-4 text-xl font-bold">Coberturas</h2>}
+                <div class="flex flex-col gap-2.5">
+                  {content.coverages!.map((coverage) => (
+                    <details name="coverage-accordion" class="group overflow-hidden rounded-xl bg-cicaindigo-50 shadow-sm transition-colors duration-150">
+                      <summary class="flex cursor-pointer list-none select-none items-center gap-3 px-4 py-3.5 font-medium transition-colors duration-150 bg-cicaindigo-50 hover:bg-cicaindigo-100 group-open:bg-cicaindigo-200 group-open:hover:bg-cicaindigo-200 [&::-webkit-details-marker]:hidden">
+                        <Icon
+                          name="ph:check-circle-fill"
+                          class="size-5 shrink-0 text-cicagold-500 transition-colors duration-150 group-open:text-cicaindigo-400"
+                          aria-hidden="true"
+                        />
+                        <span class="flex-1 text-sm md:text-base text-cicagray-700 transition-colors duration-150 group-open:font-semibold group-open:text-cicaindigo-500">{coverage.label}</span>
+                        <Icon
+                          name="ph:caret-down"
+                          class="size-4 shrink-0 text-cicaindigo-400 transition-transform duration-150 group-open:rotate-180"
+                          aria-hidden="true"
+                        />
+                      </summary>
+                      {(coverage.intro || coverage.items.length > 0) && (
+                        <div class="bg-white px-4 pt-5 pb-8 pl-12 sm:px-6 sm:pl-14">
+                          {coverage.intro && (
+                            <p class="text-sm md:text-base leading-relaxed text-cicagray-600 mb-3.5 font-normal">
+                              {coverage.intro}
+                            </p>
+                          )}
+                          {coverage.items.length > 0 && (
+                            <ul class="ml-2.5 sm:ml-3 flex flex-col gap-2.5 sm:gap-2">
+                              {coverage.items.map((item) => (
+                                <li class="flex items-start gap-2.5 sm:gap-3">
+                                  <svg
+                                    width="16"
+                                    height="16"
+                                    viewBox="0 0 16 16"
+                                    fill="none"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="mt-1 size-4 shrink-0"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      d="M8 4C5.8 4 4 5.8 4 8C4 10.2 5.8 12 8 12C10.2 12 12 10.2 12 8C12 5.8 10.2 4 8 4Z"
+                                      fill="#A298B8"
+                                    />
+                                    <path
+                                      d="M8 1C11.9 1 15 4.1 15 8C15 11.9 11.9 15 8 15C4.1 15 1 11.9 1 8C1 4.1 4.1 1 8 1ZM8 0C3.6 0 0 3.6 0 8C0 12.4 3.6 16 8 16C12.4 16 16 12.4 16 8C16 3.6 12.4 0 8 0Z"
+                                      fill="#A298B8"
+                                    />
+                                  </svg>
+                                  <span class="text-sm md:text-base leading-relaxed text-cicagray-700">{item}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </details>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </section>
-    )}
+    )
+  }
 
-    {content.tip?.text && (
-      <aside class="mt-10 rounded border border-gray-200 bg-gray-50 p-6">
-        {content.tip.title && <p class="font-semibold">{content.tip.title}</p>}
-        <p class="mt-1 text-gray-600">{content.tip.text}</p>
-      </aside>
-    )}
-  </article>
+  <div class="mx-auto max-w-[1024px] px-4 pt-12 md:pt-16 pb-16 md:pb-20">
+    {
+      content.why_choose_us?.text && (
+        <section class="mx-auto w-full max-w-[1024px] rounded-2xl bg-cicaindigo-100 px-6 py-8 sm:px-10 md:py-10 text-center">
+          <h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-cicaindigo-500 mb-3 md:mb-4">
+            {content.why_choose_us.title ?? '¿Por qué elegirnos?'}
+          </h2>
+          <div
+            class="prose prose-gray mx-auto max-w-4xl text-center text-sm md:text-base leading-relaxed text-cicagray-900 font-light [&_p]:mb-0 [&_p]:text-center [&_p]:leading-relaxed [&_p]:text-cicagray-900 [&_strong]:font-semibold [&_strong]:text-cicaindigo-500"
+            set:html={content.why_choose_us.text}
+          />
+        </section>
+      )
+    }
+
+    {
+      (content.tip?.text || content.tip?.title) && (
+        <section class="mx-auto mt-12 md:mt-16 flex flex-col items-center text-center max-w-[1024px] w-full">
+          <div class="flex items-center justify-center gap-2.5 sm:gap-3">
+            <svg
+              width="29"
+              height="31"
+              viewBox="0 0 29 31"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              class="size-6 sm:size-7 shrink-0 text-cicaindigo-500"
+              aria-hidden="true"
+            >
+              <path
+                d="M12.1875 26.0385V28.3065C12.1875 28.926 12.5325 29.4345 12.957 29.4345H16.0365C16.464 29.4345 16.8075 28.9245 16.8075 28.3065V26.0385M13.3275 10.2285C12.4418 10.2289 11.5925 10.581 10.9664 11.2074C10.3402 11.8339 9.9885 12.6833 9.9885 13.569M25.4955 15.0405H28.2465M22.7265 6.0225L24.678 4.071M24.2265 22.6845L26.178 24.6345M14.4975 0.75V2.9745M4.3575 4.0695L6.2955 6.0225M2.8575 24.6345L4.7955 22.6845M3.4995 15.0405H0.75 M12.1875 26.0385H16.8075M10.8 23.2H18.2M11.8 23.2C10.6 21.5 7.2 18 7.2 13.5C7.2 9.5 10.5 6.2 14.5 6.2C18.5 6.2 21.8 9.5 21.8 13.5C21.8 18 18.4 21.5 17.2 23.2"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            {content.tip.title && (
+              <h3 class="text-base sm:text-lg md:text-xl font-bold text-cicaindigo-500">
+                {content.tip.title}
+              </h3>
+            )}
+          </div>
+          {content.tip.text && (
+            <p class="mt-2.5 sm:mt-3 max-w-3xl text-center text-sm md:text-base leading-relaxed text-cicagray-900 font-normal">
+              {content.tip.text}
+            </p>
+          )}
+          <Icon name="ph:caret-down" class="text-cicagold-500 mt-6 sm:mt-8 size-6 animate-bounce" aria-hidden="true" />
+        </section>
+      )
+    }
+  </div>
+
+  {
+    service.footer?.blocks && service.footer.blocks.length > 0 && (
+      service.footer.blocks.map((block) => <BlockRenderer block={block} />)
+    )
+  }
 </BaseLayout>
+
+<style>
+  /*
+    Altura del header — ver el comentario de `headerHeightStyle` en el
+    frontmatter para la razón de ser de esta escala. `max()` entre el vh
+    pedido y un piso en px por breakpoint, para que no colapse en celulares
+    bajos.
+  */
+  .service-header {
+    height: max(var(--header-floor-base), var(--header-vh-base));
+  }
+
+  @media (min-width: 540px) {
+    .service-header {
+      height: max(var(--header-floor-sm), var(--header-vh-sm));
+    }
+  }
+
+  @media (min-width: 768px) {
+    .service-header {
+      height: max(var(--header-floor-md), var(--header-vh-md));
+    }
+  }
+
+  @media (min-width: 1080px) {
+    .service-header {
+      height: max(var(--header-floor-lg), var(--header-vh-lg));
+    }
+  }
+
+</style>
+
+<script>
+  /**
+   * Toggle de tabs "¿Qué ofrecemos?"/"Coberturas" — JS mínimo (ADR-001),
+   * sin isla de framework: es un `hidden` toggle simple, mismo criterio ya
+   * usado en `Hero.astro` para el carousel (interval + toggle de clases).
+   * `[data-service-tabs]` es único por página (SSG, sin duplicados), pero
+   * se recorre igual con `querySelectorAll` por si el bloque se reusa en
+   * otro contexto más adelante.
+   */
+  function initServiceTabs(): void {
+    document.querySelectorAll<HTMLElement>('[data-service-tabs]').forEach((root) => {
+      const triggers = root.querySelectorAll<HTMLButtonElement>('[data-tab-trigger]');
+      const panels = root.querySelectorAll<HTMLElement>('[data-tab-panel]');
+
+      triggers.forEach((trigger) => {
+        trigger.addEventListener('click', () => {
+          const target = trigger.dataset.tabTrigger;
+
+          triggers.forEach((t) => {
+            t.setAttribute('aria-selected', String(t === trigger));
+          });
+
+          panels.forEach((panel) => {
+            panel.hidden = panel.dataset.tabPanel !== target;
+          });
+        });
+      });
+    });
+  }
+
+  initServiceTabs();
+</script>

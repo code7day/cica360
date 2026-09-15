@@ -26,56 +26,100 @@
    */
 
   /* cicaindigo — color primario (fondos principales, headers, navegación) */
-  --color-cicaindigo-50: oklch(0.965 0.007 312.3); /* #F5F2F7 */
-  --color-cicaindigo-100: oklch(0.925 0.013 306.02); /* #E8E4ED */
-  --color-cicaindigo-200: oklch(0.811 0.035 304.45); /* #C6BCD4 */
-  --color-cicaindigo-300: oklch(0.699 0.047 299.45); /* #A298B8 */
-  --color-cicaindigo-400: oklch(0.494 0.062 292.2); /* #625B82 */
-  --color-cicaindigo-500: oklch(0.311 0.058 283.83); /* #2D2C4D — DEFAULT */
-  --color-cicaindigo-600: oklch(0.276 0.062 282.91); /* #242345 */
-  --color-cicaindigo-700: oklch(0.23 0.06 281.96); /* #191838 */
-  --color-cicaindigo-800: oklch(0.195 0.058 280.98); /* #11102E */
-  --color-cicaindigo-900: oklch(0.157 0.049 279.11); /* #090921 — fondo de Hero/CTA Banner */
-  --color-cicaindigo-950: oklch(0.124 0.044 277.74); /* #040417 — fondo de Footer */
+  --color-cicaindigo-50: oklch(0.965 0.007 312.3);
+  /* #F5F2F7 */
+  --color-cicaindigo-100: oklch(0.925 0.013 306.02);
+  /* #E8E4ED */
+  --color-cicaindigo-200: oklch(0.811 0.035 304.45);
+  /* #C6BCD4 */
+  --color-cicaindigo-300: oklch(0.699 0.047 299.45);
+  /* #A298B8 */
+  --color-cicaindigo-400: oklch(0.494 0.062 292.2);
+  /* #625B82 */
+  --color-cicaindigo-500: oklch(0.311 0.058 283.83);
+  /* #2D2C4D — DEFAULT */
+  --color-cicaindigo-600: oklch(0.276 0.062 282.91);
+  /* #242345 */
+  --color-cicaindigo-700: oklch(0.23 0.06 281.96);
+  /* #191838 */
+  --color-cicaindigo-800: oklch(0.195 0.058 280.98);
+  /* #11102E */
+  --color-cicaindigo-900: oklch(0.157 0.049 279.11);
+  /* #090921 — fondo de Hero/CTA Banner */
+  --color-cicaindigo-950: oklch(0.124 0.044 277.74);
+  /* #040417 — fondo de Footer */
 
   /* cicagreen — color secundario (elementos interactivos, CTAs secundarios, acentos) */
-  --color-cicagreen-50: oklch(0.967 0.01 204.92); /* #EDF6F7 */
-  --color-cicagreen-100: oklch(0.945 0.016 206.44); /* #E1F0F2 */
-  --color-cicagreen-200: oklch(0.862 0.038 207.04); /* #B6D9DE */
-  --color-cicagreen-300: oklch(0.772 0.054 208.37); /* #8DBFC7 */
-  --color-cicagreen-400: oklch(0.617 0.071 211.45); /* #4D919E */
-  --color-cicagreen-500: oklch(0.472 0.072 217.59); /* #206576 — DEFAULT */
-  --color-cicagreen-600: oklch(0.424 0.068 222.87); /* #195669 */
-  --color-cicagreen-700: oklch(0.357 0.062 230.93); /* #114257 */
-  --color-cicagreen-800: oklch(0.299 0.058 238.83); /* #0B3147 */
-  --color-cicagreen-900: oklch(0.243 0.051 243.68); /* #062236 */
-  --color-cicagreen-950: oklch(0.177 0.039 248.02); /* #031221 */
+  --color-cicagreen-50: oklch(0.967 0.01 204.92);
+  /* #EDF6F7 */
+  --color-cicagreen-100: oklch(0.945 0.016 206.44);
+  /* #E1F0F2 */
+  --color-cicagreen-200: oklch(0.862 0.038 207.04);
+  /* #B6D9DE */
+  --color-cicagreen-300: oklch(0.772 0.054 208.37);
+  /* #8DBFC7 */
+  --color-cicagreen-400: oklch(0.617 0.071 211.45);
+  /* #4D919E */
+  --color-cicagreen-500: oklch(0.472 0.072 217.59);
+  /* #206576 — DEFAULT */
+  --color-cicagreen-600: oklch(0.424 0.068 222.87);
+  /* #195669 */
+  --color-cicagreen-700: oklch(0.357 0.062 230.93);
+  /* #114257 */
+  --color-cicagreen-800: oklch(0.299 0.058 238.83);
+  /* #0B3147 */
+  --color-cicagreen-900: oklch(0.243 0.051 243.68);
+  /* #062236 */
+  --color-cicagreen-950: oklch(0.177 0.039 248.02);
+  /* #031221 */
 
   /* cicagold — color de acento (CTAs principales, highlights, badges) */
-  --color-cicagold-50: oklch(0.993 0.015 98.28); /* #FFFDF2 */
-  --color-cicagold-100: oklch(0.979 0.025 99.52); /* #FCF9E6 */
-  --color-cicagold-200: oklch(0.961 0.065 99.92); /* #FCF4C2 */
-  --color-cicagold-300: oklch(0.933 0.098 97.87); /* #FAEA9D */
-  --color-cicagold-400: oklch(0.873 0.144 93.68); /* #F5D358 */
-  --color-cicagold-500: oklch(0.81 0.163 86.32); /* #EFB814 — DEFAULT, botón CTA */
-  --color-cicagold-600: oklch(0.74 0.15 82.38); /* #D9A00F — hover del CTA */
-  --color-cicagold-700: oklch(0.619 0.129 73.98); /* #B3780B */
-  --color-cicagold-800: oklch(0.513 0.11 68.49); /* #8F5907 */
-  --color-cicagold-900: oklch(0.407 0.09 63.37); /* #6B3D04 */
-  --color-cicagold-950: oklch(0.294 0.069 58.3); /* #452201 */
+  --color-cicagold-50: oklch(0.993 0.015 98.28);
+  /* #FFFDF2 */
+  --color-cicagold-100: oklch(0.979 0.025 99.52);
+  /* #FCF9E6 */
+  --color-cicagold-200: oklch(0.961 0.065 99.92);
+  /* #FCF4C2 */
+  --color-cicagold-300: oklch(0.933 0.098 97.87);
+  /* #FAEA9D */
+  --color-cicagold-400: oklch(0.873 0.144 93.68);
+  /* #F5D358 */
+  --color-cicagold-500: oklch(0.81 0.163 86.32);
+  /* #EFB814 — DEFAULT, botón CTA */
+  --color-cicagold-600: oklch(0.74 0.15 82.38);
+  /* #D9A00F — hover del CTA */
+  --color-cicagold-700: oklch(0.619 0.129 73.98);
+  /* #B3780B */
+  --color-cicagold-800: oklch(0.513 0.11 68.49);
+  /* #8F5907 */
+  --color-cicagold-900: oklch(0.407 0.09 63.37);
+  /* #6B3D04 */
+  --color-cicagold-950: oklch(0.294 0.069 58.3);
+  /* #452201 */
 
   /* cicagray — neutrales (texto de contenido, bordes, separadores) */
-  --color-cicagray-50: oklch(0.973 0 89.88); /* #F6F6F6 */
-  --color-cicagray-100: oklch(0.928 0 89.88); /* #E7E7E7 */
-  --color-cicagray-200: oklch(0.861 0 89.88); /* #D1D1D1 */
-  --color-cicagray-300: oklch(0.757 0 89.88); /* #B0B0B0 */
-  --color-cicagray-400: oklch(0.657 0 89.88); /* #919191 */
-  --color-cicagray-500: oklch(0.535 0 89.88); /* #6D6D6D — DEFAULT */
-  --color-cicagray-600: oklch(0.478 0 89.88); /* #5D5D5D */
-  --color-cicagray-700: oklch(0.428 0 89.88); /* #4F4F4F */
-  --color-cicagray-800: oklch(0.39 0 89.88); /* #454545 */
-  --color-cicagray-900: oklch(0.36 0 89.88); /* #3D3D3D */
-  --color-cicagray-950: oklch(0.269 0 89.88); /* #262626 */
+  --color-cicagray-50: oklch(0.973 0 89.88);
+  /* #F6F6F6 */
+  --color-cicagray-100: oklch(0.928 0 89.88);
+  /* #E7E7E7 */
+  --color-cicagray-200: oklch(0.861 0 89.88);
+  /* #D1D1D1 */
+  --color-cicagray-300: oklch(0.757 0 89.88);
+  /* #B0B0B0 */
+  --color-cicagray-400: oklch(0.657 0 89.88);
+  /* #919191 */
+  --color-cicagray-500: oklch(0.535 0 89.88);
+  /* #6D6D6D — DEFAULT */
+  --color-cicagray-600: oklch(0.478 0 89.88);
+  /* #5D5D5D */
+  --color-cicagray-700: oklch(0.428 0 89.88);
+  /* #4F4F4F */
+  --color-cicagray-800: oklch(0.39 0 89.88);
+  /* #454545 */
+  --color-cicagray-900: oklch(0.36 0 89.88);
+  /* #3D3D3D */
+  --color-cicagray-950: oklch(0.269 0 89.88);
+  /* #262626 */
 
   /*
    * Bloques de color de sección (Design System, pág. "Bloques de Color /
@@ -143,8 +187,10 @@
    * semántico en vez de forzarlos en un `3xl`/`6xl` genérico que después
    * hay que recordar qué representa):
    */
-  --text-h3: 1.75rem; /* 28px — H3 Subtítulo, techo del rango 24–28px */
-  --text-hero: 4rem; /* 64px — H1 Hero Display */
+  --text-h3: 1.75rem;
+  /* 28px — H3 Subtítulo, techo del rango 24–28px */
+  --text-hero: 4rem;
+  /* 64px — H1 Hero Display */
 
   /*
    * Breakpoints — sistema granular del proyecto (reemplaza los 5 breakpoints
@@ -157,6 +203,7 @@
   --breakpoint-xs: 414px;
   --breakpoint-2sm: 520px;
   --breakpoint-sm: 540px;
+  --breakpoint-2sm: 640px;
   --breakpoint-md: 768px;
   --breakpoint-2md: 810px;
   --breakpoint-3md: 960px;
@@ -198,5 +245,36 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     font-family: var(--font-sans);
+  }
+
+  /*
+   * Fix global (2026-09-11, pedido del Tech Lead: "algo bloquea el
+   * cursor-pointer en todo el sitio, porque si carga por un milisegundo
+   * como parpadeando al pasar por el ring de cada button o <a> y luego se
+   * mantiene cursor-default") — el `cursor: pointer` de un `<button>`/`<a>`
+   * es una propiedad heredable, pero un `<svg>`/`<img>` hijo (los íconos de
+   * `astro-icon`, las banderitas circulares de `ServicesGrid`, las flechas
+   * de `Hero`/`Logos`, etc. — casi todo botón/link del sitio envuelve uno)
+   * tiene su propio bounding box con `cursor: auto`, que en la práctica NO
+   * siempre resuelve heredando el valor del padre en todos los navegadores:
+   * el resultado es justo el reporte del Tech Lead — el puntero "pointer"
+   * se ve un instante (mientras el hit-test cae en el padre) y al mover el
+   * mouse un pixel más queda sobre el ícono/imagen, que cae a "default" y
+   * se queda así. La solución estándar (no heredar y esperar lo mejor, sino
+   * sacar al hijo de la jugada): `pointer-events: none` en cualquier
+   * svg/img DENTRO de un button o <a> — el evento de hover/click ya ni
+   * siquiera hace hit-test contra el ícono, pasa derecho al padre
+   * clickeable, que es el que de verdad tiene el `cursor-pointer` explícito
+   * (ver comentarios ya existentes en Header.astro/Hero.astro/Logos.astro/
+   * ContactForm.tsx/ServicesGrid.astro sobre por qué esas clases hacían
+   * falta ahí). No afecta imágenes de contenido sueltas (hero, logos de
+   * cliente, etc. fuera de un button/<a>), que siguen recibiendo sus
+   * propios eventos con normalidad.
+   */
+  button svg,
+  button img,
+  a svg,
+  a img {
+    pointer-events: none;
   }
 }

@@ -10,13 +10,7 @@
 // ---------------------------------------------------------------------------
 
 export type ApiErrorCode =
-  | 'unauthenticated'
-  | 'token_invalid'
-  | 'forbidden'
-  | 'not_found'
-  | 'validation'
-  | 'too_many_requests'
-  | 'server_error';
+  'unauthenticated' | 'token_invalid' | 'forbidden' | 'not_found' | 'validation' | 'too_many_requests' | 'server_error';
 
 export interface ApiErrorShape {
   code?: ApiErrorCode;
@@ -108,6 +102,7 @@ export type BlockType =
   | 'testimonials'
   | 'logos'
   | 'services_grid'
+  | 'testimonials_grid'
   | 'footer'
   | 'colophon'
   | 'footer_bottom';
@@ -130,7 +125,11 @@ export interface Block {
 // Pages
 // ---------------------------------------------------------------------------
 
-export type PageType = 'page' | 'landing' | 'header' | 'footer' | 'colophon' | 'legal';
+// 'header' se sacó del union (2026-09-11, ver ADR-053 en genesis): el tipo
+// de contenido "Cabecera (Header)" se descartó por completo en Stamless —
+// nunca tuvo un componente ni un mecanismo de consumo real en este sitio,
+// era tipado muerto desde el día que se agregó.
+export type PageType = 'page' | 'landing' | 'footer' | 'colophon' | 'legal';
 
 export interface PageSummary {
   uuid: string;
@@ -143,9 +142,26 @@ export interface PageSummary {
   published_at: string | null;
 }
 
+/**
+ * 2026-09-13 (ver genesis ADR-065): `seo_keywords`/`og_*` ahora SIEMPRE
+ * llegan resueltos desde el backend — con fallback a nivel de tenant
+ * (Preferencias, "Metadata SEO"/"Open Graph") cuando la página/post/
+ * servicio puntual no define su propio valor, y `og_image_rect`/
+ * `og_image_square` ya vienen como objeto `Media` con `url` (nunca un id
+ * interno) — mismo shape que `featured_image`/`image` en otros recursos.
+ * Antes de esto el tipo solo declaraba `seo_title`/`seo_description`; el
+ * resto pasaba sin tipar por el índice `[key: string]: unknown` y nunca se
+ * consumía desde `BaseLayout` (bug real: SEO/OG resuelto en la API, nunca
+ * renderizado en el `<head>` — ver `BaseLayout.astro`).
+ */
 export interface PageMeta {
   seo_title?: string | null;
+  seo_keywords?: string | null;
   seo_description?: string | null;
+  og_title?: string | null;
+  og_description?: string | null;
+  og_image_rect?: Media | null;
+  og_image_square?: Media | null;
   [key: string]: unknown;
 }
 
@@ -211,6 +227,11 @@ export interface ServiceContent {
   intro?: string | null;
   offers?: ServiceOffer[];
   coverages?: ServiceCoverage[];
+  /**
+   * `text` es HTML ya renderizado y sanitizado (2026-09-14: `RichEditor` en
+   * Console) — inyectar con `set:html`, NO interpolar con `{}` (se
+   * escaparían las etiquetas). `tip.text` (abajo) sigue siendo texto plano.
+   */
   why_choose_us?: { title?: string | null; text?: string | null };
   tip?: { title?: string | null; text?: string | null };
   [key: string]: unknown;
@@ -226,12 +247,48 @@ export interface ServiceSummary {
   image: Media | null;
 }
 
+/**
+ * 2026-09-14: `header_type`/`show_decorative_detail` — únicas 2 properties
+ * del header de detalle que quedaron configurables desde Console (el resto
+ * del look — imagen, degradado al 50% de altura, wave, banderas — es fijo,
+ * ver `[slug].astro`). Sigue siendo `Record<string, unknown>` por afuera de
+ * estos 2 campos conocidos (mismo criterio que el resto de `properties` de
+ * bloques, forma libre).
+ */
+export interface ServiceProperties {
+  header_type?: 'normal' | 'destacado';
+  show_decorative_detail?: boolean;
+  /**
+   * 2026-09-15: id de la Page tipo Footer asignada en Studio
+   */
+  footer_page_id?: number | null;
+  [key: string]: unknown;
+}
+
 export interface Service extends ServiceSummary {
   content: ServiceContent;
   meta: PageMeta;
   links: ContentLink[];
-  properties: Record<string, unknown>;
+  properties: ServiceProperties;
   published_at: string | null;
+  /**
+   * 2026-09-14: imagen secundaria/opcional (más panorámica/apaisada),
+   * pensada para el header del detalle — `image` (heredado de
+   * `ServiceSummary`) sigue siendo la miniatura del catálogo. Solo viene
+   * poblada en `GET /services/{slug}` (detalle) — el catálogo
+   * (`GET /services`, `ServiceSummary`) nunca la trae, siempre usa `image`.
+   * El fallback "si es `null`, usar `image`" se resuelve acá en el
+   * frontend (`[slug].astro`), no en el backend.
+   */
+  image_detail: Media | null;
+  /**
+   * 2026-09-15: footer dinámico elegido en Studio (properties.footer_page_id),
+   * resuelto por el backend con todos sus bloques hijos.
+   */
+  footer?: {
+    slug: string;
+    blocks: Block[];
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -468,14 +525,41 @@ export interface FooterBottomContent {
 // Forms
 // ---------------------------------------------------------------------------
 
+/**
+ * 2026-09-11 (pedido del Tech Lead, mockup real de "Contactame"): gana
+ * `city`/`country`/`area_of_interest` — mismos 3 campos nuevos sembrados en
+ * `Cliente0ContentSeeder::upsertContactForm()` (genesis) como `FormField`
+ * del form `contacto`. Cualquier key acá que NO tenga un `FormField`
+ * correspondiente del lado del backend se ignora en silencio al llegar
+ * (`ContactSubmissionService::splitPayload()`) — agregar un campo nuevo es
+ * sembrarlo ahí primero, no solo tipar acá.
+ */
 export interface ContactFormPayload {
   name: string;
   email: string;
+  city: string;
   phone?: string;
-  message: string;
+  country: string;
+  area_of_interest: string;
+  message?: string;
   [key: string]: unknown;
 }
 
 export interface ContactFormSuccessData {
   uuid: string;
+}
+
+// ---------------------------------------------------------------------------
+// Site settings (config de SITIO completo, no de una página puntual)
+// ---------------------------------------------------------------------------
+
+/**
+ * 2026-09-13 (ver genesis ADR-066) — `GET /v1/{tenant}/settings/tracking`,
+ * consumido por `BaseLayout.astro` para inyectar Meta Pixel / Google Tag
+ * Manager con carga diferida (ver ese archivo). Ambos campos son `null`
+ * cuando el tenant no cargó el ID correspondiente en Preferencias.
+ */
+export interface SiteTracking {
+  meta_pixel_id: string | null;
+  gtm_id: string | null;
 }

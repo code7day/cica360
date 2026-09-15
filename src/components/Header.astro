@@ -142,8 +142,11 @@
  * `data-mobile-menu-toggle`): fondo `cicaindigo-700` sólido, logo blanco
  * superpuesto arriba + botón cerrar (`ph:x`) a la derecha, nav vertical
  * centrada reusando el mismo esquema hover/active que el menú desktop
- * (`hover:bg-cicaindigo-400`/`active:bg-cicaindigo-700`, ambos ya legibles
- * sobre indigo-700), CTA completo (label + ícono) centrado abajo del todo.
+ * (`hover:bg-cicaindigo-400`/`active:bg-cicaindigo-500` — 2026-09-11,
+ * antes `active:bg-cicaindigo-700`, unificado a `cicaindigo-500` en TODOS
+ * los botones del navbar activos, ver comentario de `isActive` más abajo
+ * —, ambos ya legibles sobre indigo-700), CTA completo (label + ícono)
+ * centrado abajo del todo.
  *
  * Apertura "metal líquido imantado" (2026-08-31, 3ra vuelta — reemplaza el
  * `scale-95/opacity-0` original, pedido explícito del Tech Lead: "que se
@@ -286,13 +289,25 @@ const shapeDelay = 'group-data-[scrolled=true]/nav:delay-200';
 // fantasma y el `<span>` real en la misma celda (`grid-area: 1 / 1`, ver
 // `<style>`) — el resto de los usos de `linkBaseClass` (mobile, sin la
 // técnica del ghost) se comportan igual que antes con este display.
+// CORRECCIÓN 2026-09-10 (pedido del Tech Lead, con captura del navbar):
+// "en los enlaces del navbar y donde exista un enlace o action deberia de
+// mostrarse el cursor-pointer" — `cursor-pointer` explícito en vez de
+// depender del default del navegador. Este `<a href>` YA lo mostraba sin
+// esta clase (el UA stylesheet le da `pointer` a cualquier link con
+// `href`), pero el toggle de submenú que también usa `linkBaseClass` es un
+// `<button>` — y los `<button>` NO reciben `cursor: pointer` por defecto
+// en ningún navegador (a diferencia de los links), así que ahí sí hacía
+// falta. Se agrega acá, en la base compartida, para que TODO lo que use
+// `linkBaseClass` (links de escritorio, links del overlay mobile, el
+// toggle de submenú) quede explícito por igual — no depender del tag para
+// saber si hace falta o no.
 const linkBaseClass =
-  'inline-grid h-9 place-items-center rounded-[30px] px-5 text-base font-light uppercase transition-colors duration-200 hover:rounded-full hover:bg-cicaindigo-400 hover:text-white';
+  'inline-grid h-9 cursor-pointer place-items-center rounded-[30px] px-5 text-base font-light uppercase transition-colors duration-200 hover:rounded-full hover:bg-cicaindigo-400 hover:text-white';
 // CTA de la topbar (2026-08-31, responsive): en mobile (<3md) colapsa a un
 // círculo ícono-solo (`w-10`, sin `px-*` — el label queda oculto vía
 // `hidden 3md:inline` en el <span> del texto, ver más abajo); desde `3md`
 // recupera el ancho "hug" + padding originales (204px medidos en Figma).
-const ctaBaseClass = `inline-flex h-10 w-10 shrink-0 items-center justify-center gap-2 rounded-full text-xl font-normal italic transition-all ${shapeDelay} duration-300 3md:h-12 3md:w-auto 3md:px-6 group-data-[scrolled=true]/nav:h-10`;
+const ctaBaseClass = `inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full text-xl font-normal italic transition-all ${shapeDelay} duration-300 3md:h-12 3md:w-auto 3md:px-6 group-data-[scrolled=true]/nav:h-10`;
 
 // Botón ícono-solo compartido por la hamburguesa (topbar) y el botón
 // cerrar (overlay) — mismo círculo `h-10 w-10`, mismos colores que la
@@ -459,7 +474,7 @@ const mobileIconBtnClass =
                         data-label={item.title}
                         class={`${linkBaseClass} ${
                           isActive
-                            ? 'bg-cicaindigo-700 rounded-full text-white'
+                            ? 'bg-cicaindigo-500 rounded-full text-white'
                             : 'group-data-[scrolled=true]/nav:text-cicaindigo-500 text-white/90'
                         }`}
                       >
@@ -474,12 +489,33 @@ const mobileIconBtnClass =
         }
 
         {
+          // `isCtaActive` (2026-09-11, pedido del Tech Lead con captura del
+          // navbar en la interna de Contacto: "el boton de consulta ahora
+          // del navbar, debe activarse por estar en esta interna" — mismo
+          // patrón `href === currentPath` que ya usan los links de
+          // `linkItems`/mobile (`isActive` más arriba), aplicado acá al
+          // CTA. Color: 2026-09-11, corrección del mismo día ("perdon
+          // todos los botones del navbar + el boton cuando esten active
+          // tiene que ser cicaindigo-500") — antes `cicaindigo-400` en el
+          // CTA (1er intento) y `cicaindigo-700` en los links de
+          // `linkItems` (`isActive` de arriba), ahora UNIFICADO: TODO
+          // botón activo del navbar (links + CTA, topbar y overlay
+          // mobile) usa el mismo `bg-cicaindigo-500`. El CTA ya es un
+          // botón de marca con sus propios estados de scroll (`bg-white/10`
+          // sin scrollear, `bg-cicaindigo-100` scrolleado) — el estado
+          // activo los pisa a ambos (y su propio `:hover`, que si no
+          // quedaría inconsistente con el resto del botón ya activo).
           ctaItem?.href && (
             <a
               href={ctaItem.href}
               target={ctaItem.target}
               rel={ctaItem.target === '_blank' ? 'noopener noreferrer' : undefined}
-              class={`${ctaBaseClass} hover:bg-cicagold-500 hover:text-cicaindigo-500 group-data-[scrolled=true]/nav:bg-cicaindigo-100 group-data-[scrolled=true]/nav:text-cicaindigo-500 group-data-[scrolled=true]/nav:hover:bg-cicagold-600 bg-white/10 text-white group-data-[scrolled=true]/nav:hover:text-white`}
+              aria-current={ctaItem.href === currentPath ? 'page' : undefined}
+              class={`${ctaBaseClass} ${
+                ctaItem.href === currentPath
+                  ? 'bg-cicaindigo-500 text-white hover:bg-cicaindigo-500 hover:text-white group-data-[scrolled=true]/nav:bg-cicaindigo-500 group-data-[scrolled=true]/nav:text-white group-data-[scrolled=true]/nav:hover:bg-cicaindigo-500 group-data-[scrolled=true]/nav:hover:text-white'
+                  : 'hover:bg-cicagold-500 hover:text-cicaindigo-500 group-data-[scrolled=true]/nav:bg-cicaindigo-100 group-data-[scrolled=true]/nav:text-cicaindigo-500 group-data-[scrolled=true]/nav:hover:bg-cicagold-600 bg-white/10 text-white group-data-[scrolled=true]/nav:hover:text-white'
+              }`}
             >
               {/* Label oculto <3md (queda solo el ícono) — ver `ctaBaseClass`. */}
               <span class="3md:inline hidden">{ctaItem.title}</span>
@@ -562,7 +598,9 @@ const mobileIconBtnClass =
             const hasChildren = item.children && item.children.length > 0;
             // Mismo esquema que el link activo del menú desktop (`rounded-full`
             // incluido — es parte del estilo "activo", no solo el color).
-            const activeClass = isActive ? 'bg-cicaindigo-700 rounded-full font-normal text-white' : 'text-white/90';
+            // Color unificado a `cicaindigo-500` (2026-09-11, ver comentario
+            // del CTA más abajo) — antes `cicaindigo-700`.
+            const activeClass = isActive ? 'bg-cicaindigo-500 rounded-full font-normal text-white' : 'text-white/90';
 
             return hasChildren ? (
               <li class="w-full">
@@ -590,7 +628,7 @@ const mobileIconBtnClass =
                           href={child.href ?? '#'}
                           target={child.target}
                           aria-current={child.href === currentPath ? 'page' : undefined}
-                          class={`${linkBaseClass} h-10 w-full text-base ${child.href === currentPath ? 'bg-cicaindigo-700 rounded-full font-normal text-white' : 'text-white/80'}`}
+                          class={`${linkBaseClass} h-10 w-full text-base ${child.href === currentPath ? 'bg-cicaindigo-500 rounded-full font-normal text-white' : 'text-white/80'}`}
                         >
                           {child.title}
                         </a>
@@ -620,13 +658,23 @@ const mobileIconBtnClass =
       /* CTA completo (label + ícono), centrado abajo del todo — mismo variant "dark" que el CTA de la topbar glassy (`bg-white/10`/hover `cicagold-500`), pero fijo (el overlay no tiene estado sticky/glassy propio) y más grande (h-14) para que sea el punto de llegada obvio del menú. */
     }
     {
+      // Mismo estado activo del CTA de la topbar (ver comentario de arriba,
+      // línea ~503) replicado acá — este `<a>` es un elemento DISTINTO
+      // (overlay mobile, no reusa el de la topbar), así que necesita su
+      // propia condición, no solo heredar la de arriba. Color unificado a
+      // `cicaindigo-500` (2026-09-11) — antes `cicaindigo-400`.
       ctaItem?.href && (
         <div data-menu-reveal="3" class="flex justify-center px-6 pb-10">
           <a
             href={ctaItem.href}
             target={ctaItem.target}
             rel={ctaItem.target === '_blank' ? 'noopener noreferrer' : undefined}
-            class="hover:bg-cicagold-500 hover:text-cicaindigo-500 inline-flex h-14 shrink-0 items-center justify-center gap-2 rounded-full bg-white/10 px-8 text-xl font-normal text-white italic transition-colors duration-200"
+            aria-current={ctaItem.href === currentPath ? 'page' : undefined}
+            class={`inline-flex h-14 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-full px-8 text-xl font-normal italic transition-colors duration-200 ${
+              ctaItem.href === currentPath
+                ? 'bg-cicaindigo-500 text-white hover:bg-cicaindigo-500 hover:text-white'
+                : 'hover:bg-cicagold-500 hover:text-cicaindigo-500 bg-white/10 text-white'
+            }`}
           >
             {ctaItem.title}
             <Icon name="ph:paper-plane-tilt" size={20} />

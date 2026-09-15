@@ -17,7 +17,15 @@ if (!slug) {
 const post = await getPost(slug);
 ---
 
-<BaseLayout title={post.title} description={post.meta?.seo_description ?? post.excerpt}>
+<BaseLayout
+  title={post.title}
+  description={post.meta?.seo_description ?? post.excerpt}
+  seoTitle={post.meta?.seo_title}
+  keywords={post.meta?.seo_keywords}
+  ogTitle={post.meta?.og_title}
+  ogDescription={post.meta?.og_description ?? post.excerpt}
+  ogImage={post.meta?.og_image_rect ?? post.meta?.og_image_square ?? post.featured_image}
+>
   <article class="mx-auto max-w-3xl px-4 py-16">
     {post.featured_image?.url && (
       <img src={post.featured_image.url} alt={post.featured_image.alt_text ?? ''} class="mb-8 w-full rounded" />

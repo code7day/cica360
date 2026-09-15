@@ -21,6 +21,11 @@ interface ImportMetaEnv {
   readonly PUBLIC_CONTACT_FORM_ENDPOINT: string;
   /** Token acotado (forms:submit) — solo si no hay proxy PHP disponible. */
   readonly PUBLIC_STAMLESS_FORMS_TOKEN?: string;
+  /**
+   * Endpoint GET para geolocalizar por IP (preselección de país, ADR-004).
+   * Proxy PHP por defecto — nunca expone el token de ipinfo.io al cliente.
+   */
+  readonly PUBLIC_IPINFO_ENDPOINT?: string;
 }
 
 interface ImportMeta {

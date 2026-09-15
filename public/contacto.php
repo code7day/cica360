@@ -10,9 +10,11 @@ declare(strict_types=1);
  * ContactForm.tsx, vía src/lib/api.ts::submitContactForm()) y lo reenvía
  * server-side a la API de Stamless con el Bearer token de la ability
  * `forms:submit` — el token NUNCA está en este archivo ni en ningún
- * archivo versionado en git: vive en `contacto.config.php`, que hay que
- * crear a mano en el servidor (ver contacto.config.example.php) y que
- * está en .gitignore a propósito.
+ * archivo versionado en git: se lee de `.env` (mismo `.env` que usa
+ * Node/Astro en build time) vía `_env.php`, que hay que copiar a mano un
+ * nivel por encima del document root en el servidor — ver el docblock de
+ * `_env.php` para el detalle de seguridad de esa ubicación, y ADR-002
+ * (actualización 2026-09-12) en docs/context/DECISIONS.md.
  *
  * Requiere: PHP con la extensión cURL habilitada (estándar en shared
  * hosting real). Si el hosting no tiene PHP, usar el fallback de token
@@ -46,20 +48,19 @@ if (!function_exists('curl_init')) {
     respond(500, ['success' => false, 'message' => 'Error interno. Intentá de nuevo más tarde.', 'status_code' => 500]);
 }
 
-$configPath = __DIR__ . '/contacto.config.php';
+require_once __DIR__ . '/_env.php';
 
-if (!is_file($configPath)) {
-    error_log('[contacto.php] Falta contacto.config.php — ver contacto.config.example.php para crearlo.');
-    respond(500, ['success' => false, 'message' => 'Error interno. Intentá de nuevo más tarde.', 'status_code' => 500]);
-}
-
-require $configPath;
-// Debe definir las constantes: STAMLESS_API_URL, STAMLESS_TENANT_SLUG,
-// STAMLESS_FORMS_TOKEN, y opcionalmente CONTACT_FORM_SLUG (default 'contacto').
+// Nombres de variable IGUALES a los que ya documenta `.env` — así el mismo
+// archivo sirve para Node/Astro (build time) y para este proxy (runtime),
+// sin duplicar ni renombrar nada (ver ADR-002, actualización 2026-09-12).
+define('STAMLESS_API_URL', (string) cica360_env('STAMLESS_API_URL', ''));
+define('STAMLESS_TENANT_SLUG', (string) cica360_env('STAMLESS_TENANT_SLUG', ''));
+define('STAMLESS_FORMS_TOKEN', (string) cica360_env('STAMLESS_FORMS_PROXY_TOKEN', ''));
+define('CONTACT_FORM_SLUG', (string) cica360_env('CONTACT_FORM_SLUG', 'contacto'));
 
 foreach (['STAMLESS_API_URL', 'STAMLESS_TENANT_SLUG', 'STAMLESS_FORMS_TOKEN'] as $required) {
-    if (!defined($required) || constant($required) === '') {
-        error_log("[contacto.php] Falta la constante {$required} en contacto.config.php.");
+    if (constant($required) === '') {
+        error_log("[contacto.php] Falta la variable {$required} en .env (ver .env.example) — el .env debe existir en el servidor un nivel por encima del document root, ver _env.php.");
         respond(500, ['success' => false, 'message' => 'Error interno. Intentá de nuevo más tarde.', 'status_code' => 500]);
     }
 }
@@ -97,20 +98,79 @@ unset($payload['website']);
 
 touch($rateLimitFile);
 
+// --- País de origen por IP (2026-09-12, pedido del Tech Lead: "cabe la
+// posibilidad abierta de que el cliente cambie de pais en el formulario
+// pero siempre el api debe recibir el IP y country_code de origen, por
+// favor asegurarse eso") — se resuelve DE NUEVO acá, siempre, en el
+// momento del envío, a partir de $clientIp (la IP real de la conexión).
+// Deliberadamente NO se reutiliza ningún valor que el navegador haya
+// mandado en el payload (ej. un eventual "country_code" detectado por el
+// GET a ipinfo.php al cargar la página): ese lookup de UX es best-effort y
+// puede no haber corrido, fallado, o (si alguna vez se sumara al payload)
+// ser manipulado por el cliente — la única fuente de verdad de "origen"
+// es la IP de ESTA conexión, resuelta server-side. Completamente
+// independiente de `payload['country']` (el país que el visitante elige a
+// mano en el `<select>` — dato de negocio, no geolocalización), que el
+// visitante puede cambiar libremente sin afectar este valor.
+//
+// Best-effort, igual que ipinfo.php: si falla por cualquier motivo (sin
+// cURL/token, red, IP no geolocalizable), `$originCountryCode` queda
+// `null` y el header simplemente no se manda — NUNCA bloquea ni demora
+// más de lo que ya tarda `cica360_resolve_country_code()` (con su propio
+// timeout corto) el envío del formulario. Es un dato opcional también del
+// lado de Stamless (ver ADR correspondiente en genesis): no es obligatorio
+// para ningún tenant, cada uno decide si lo usa según si su proxy lo
+// manda o no.
+require_once __DIR__ . '/_geoip.php';
+$originCountryCode = cica360_resolve_country_code($clientIp);
+
 // --- Forward a Stamless ---
-$formSlug = defined('CONTACT_FORM_SLUG') ? CONTACT_FORM_SLUG : 'contacto';
-$targetUrl = rtrim(STAMLESS_API_URL, '/') . '/v1/' . STAMLESS_TENANT_SLUG . '/forms/' . rawurlencode($formSlug) . '/submit';
+$targetUrl = rtrim(STAMLESS_API_URL, '/') . '/v1/' . STAMLESS_TENANT_SLUG . '/forms/' . rawurlencode(CONTACT_FORM_SLUG) . '/submit';
+
+$forwardHeaders = [
+    'Content-Type: application/json',
+    'Accept: application/json',
+    'Authorization: Bearer ' . STAMLESS_FORMS_TOKEN,
+    // 2026-09-12 (ADR-004): esta llamada es server-to-server (este
+    // script corre en el hosting de CICA360 y le pega a Stamless por
+    // cURL) — sin este header, Stamless vería como "IP del visitante"
+    // la IP saliente de ESTE hosting, siempre la misma para cualquier
+    // visitante. Se reenvía la IP real ($clientIp, ya calculada arriba
+    // para el rate limit de este mismo script) para que
+    // FormSubmissionController::store() (genesis) la use en vez de la
+    // suya propia al guardar Contact::ip_address.
+    'X-Forwarded-For: ' . $clientIp,
+];
+
+if ($originCountryCode !== null) {
+    // Opcional: solo se manda si se pudo resolver. Ver comentario arriba
+    // de $originCountryCode para el porqué de resolverlo siempre de nuevo
+    // acá en vez de confiar en cualquier valor que venga en $payload.
+    $forwardHeaders[] = 'X-Origin-Country: ' . $originCountryCode;
+}
+
+// 2026-09-12, pedido del Tech Lead: "validar que el formulario solo
+// reciba de un dominio de la app (website cliente) que fue configurada al
+// crear un token, por seguridad". Esta llamada es server-to-server (ver
+// comentario de X-Forwarded-For arriba) — no hay un `Origin` de navegador
+// real que reenviar, así que este proxy declara el SUYO propio explícito
+// (el dominio público real de este sitio, `PUBLIC_SITE_URL` del mismo
+// `.env` que ya usa Node/Astro), para que
+// `FormSubmissionController::assertOriginIsAllowed()` (genesis) lo valide
+// contra los `Domain` registrados para este tenant. Ver ADR
+// correspondiente en `docs/context/DECISIONS.md`, mismo día.
+$siteHost = parse_url((string) cica360_env('PUBLIC_SITE_URL', ''), PHP_URL_HOST);
+
+if (is_string($siteHost) && $siteHost !== '') {
+    $forwardHeaders[] = 'X-Forwarded-Host: ' . $siteHost;
+}
 
 $ch = curl_init($targetUrl);
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST => true,
     CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
-    CURLOPT_HTTPHEADER => [
-        'Content-Type: application/json',
-        'Accept: application/json',
-        'Authorization: Bearer ' . STAMLESS_FORMS_TOKEN,
-    ],
+    CURLOPT_HTTPHEADER => $forwardHeaders,
     CURLOPT_TIMEOUT => 10,
     CURLOPT_CONNECTTIMEOUT => 5,
 ]);

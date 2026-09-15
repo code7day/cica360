@@ -84,9 +84,7 @@ const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean
 // imagen de abajo; con "Sólido"/"Degradado" no hay imagen cargada. Mismo
 // helper que ya usan `Colophon.astro`/`FooterBottom.astro` — antes este
 // bloque ignoraba `background_type`/gradiente por completo.
-const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : '']
-  .join(' ')
-  .trim();
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : ''].join(' ').trim();
 
 const PADDING_Y_CLASSES: Record<NonNullable<CtaProperties['padding_y']>, string> = {
   sm: 'py-10 3md:py-14',
@@ -153,6 +151,9 @@ const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0
  */
 const LINK_STYLE_CLASSES: Record<string, string> = {
   primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  // 2026-09-11: REVERTIDO — la regla "default blanco → hover cicagold-500"
+  // aplica a botones OUTLINE sobre fondo de color (ver `Testimonials.astro`),
+  // no a este `secondary` (relleno sólido). Vuelve al valor original.
   secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
   outline: 'border-current bg-transparent hover:bg-white/10',
   text: 'border-transparent bg-transparent underline-offset-4 hover:underline',
@@ -187,18 +188,33 @@ const linkSize = LINK_SIZE_CLASSES[properties.link_size ?? 'lg'];
   }
   {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
 
-  <div class={`relative z-10 mx-auto flex w-full flex-col items-center gap-2 text-center ${contentWidthClass} ${paddingYClass}`}>
-    {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
-    {block.title && <h2 class="w-full text-3xl font-bold italic sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]">{block.title}</h2>}
-    {/* No es un "subtítulo": es la descripción breve del CTA (1 línea bajo
+  <div
+    class={`relative z-10 mx-auto flex w-full flex-col items-center gap-2 text-center px-5 sm:px-7 ${contentWidthClass} ${paddingYClass}`}
+  >
+    {
+      /* CORRECCIÓN 2026-09-09 (pedido del Tech Lead, mismo cambio en
+      TODOS los blocks con heading — ver comentario completo en
+      `RichText.astro`): por debajo de `xs` (414px), pretitle/título bajan
+      a `leading-tight` (1.25); desde `xs` en adelante vuelven al
+      interlineado normal. El `subtitle` de ESTE bloque NO se toca — ver
+      comentario debajo, no es un subtítulo real sino la "descripción
+      breve" del CTA con un `leading-8` fijo ya confirmado por el Tech
+      Lead (2026-09-01) para un tamaño de fuente arbitrario (22px); es un
+      caso aparte, fuera del patrón compartido del resto de los blocks. */
+    }
+    {block.pretitle && <p class="w-full text-sm leading-tight font-light tracking-[0.2em] uppercase opacity-80 xs:leading-normal">{block.pretitle}</p>}
+    {block.title && <h2 class="4md:text-4xl w-full text-2xl font-bold italic leading-tight sm:text-3xl xs:leading-normal">{block.title}</h2>}
+    {
+      /* No es un "subtítulo": es la descripción breve del CTA (1 línea bajo
       el título). Bajado de 24px a 22px (2026-09-01, ajuste del Tech Lead:
       "no encaja") — line-height se mantiene en 32px (leading-8) con el
       tamaño de fuente en un valor arbitrario ya que 22px no es un paso de
       la escala estándar de Tailwind. Sigue viviendo en `block.subtitle`
       (mismo campo genérico de siempre), pero el admin ya la relabela como
       "Descripción breve" (ver HeadingFieldset::make() en el bloque `cta`
-      de PageResource.php). */}
-    {block.subtitle && <p class="w-full text-[22px] leading-8 font-light opacity-90">{block.subtitle}</p>}
+      de PageResource.php). */
+    }
+    {block.subtitle && <p class="w-full text-lg leading-8 font-light opacity-90 lg:text-xl">{block.subtitle}</p>}
 
     {
       showLink && link && (

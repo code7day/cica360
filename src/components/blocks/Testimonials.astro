@@ -44,7 +44,9 @@
  * (`Cliente0ContentSeeder::upsertHomePage()` linkea a `pages['casos-de-exito']`).
  */
 import type { Block, ContentLink, Media } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 import { Icon } from 'astro-icon/components';
+import BlockHeading from './BlockHeading.astro';
 
 interface TestimonialItem {
   name?: string;
@@ -59,11 +61,10 @@ interface Props {
 
 const { block } = Astro.props;
 
-const content = block.content as { items?: TestimonialItem[] };
+const content = block.content as { items?: TestimonialItem[]; background_image?: Media | null };
 const items = content.items ?? [];
 
-interface TestimonialsProperties {
-  background_color?: string | null;
+interface TestimonialsProperties extends BackgroundColorProperties {
   /** 2026-08-31, nuevo: fondo de CADA tarjeta, independiente del fondo de la sección. */
   item_background_color?: string | null;
   /** 2026-08-31, nuevo: % de opacidad del fondo de cada tarjeta en reposo (0–100). El hover sube +20 automáticamente, sin campo propio. */
@@ -78,6 +79,24 @@ interface TestimonialsProperties {
    */
   animation?: 'none' | 'fade' | 'slide-up';
   show_link?: boolean;
+  /**
+   * 2026-09-11 (pedido del Tech Lead: "todos deberian permitir personalizar
+   * el fondo en 3 tipos") — imagen de fondo de la SECCIÓN (opcional, capa
+   * intermedia sobre `background_color`), mismo patrón que `Features.astro`.
+   * De paso, `background_color` pasa a resolverse con el helper genérico
+   * `resolveBackgroundStyle()` (antes `background-color` plano, sin soporte
+   * real de degradado pese a que Filament ya ofrecía esa opción).
+   */
+  media_blend_mode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
 }
 
 const properties = (block.properties as TestimonialsProperties) ?? {};
@@ -96,12 +115,26 @@ const PADDING_Y_CLASSES: Record<NonNullable<TestimonialsProperties['padding_y']>
 
 const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
 
-const sectionStyle = [
-  properties.background_color ? `background-color: ${properties.background_color};` : '',
-  properties.text_color ? `color: ${properties.text_color};` : '',
-]
-  .join(' ')
-  .trim();
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : ''].join(' ').trim();
+
+/** Mismos 6 filtros CSS + opacidad + blend mode que `Features.astro`/`Cta.astro` (`properties.media_*`, set genérico). */
+function backgroundImageEffectStyle(props: TestimonialsProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
 
 /**
  * 2026-08-31, pedido del Tech Lead: el fondo de cada tarjeta no es opaco —
@@ -160,6 +193,52 @@ const MAX_GRID_ITEMS = 3;
 const useCarousel = items.length > MAX_GRID_ITEMS;
 
 /**
+ * 2026-09-08 (15va vuelta): en `sm`–`lg` (540–1079px, 2 tarjetas por
+ * página, `itemsPerView` SIEMPRE 2 ahí por diseño — ver `sm:basis-*` más
+ * abajo) el Tech Lead reportó, con 3 capturas: en la 1ra página (item[0]+
+ * item[1]) falta margen a la DERECHA de item[1] (el borde derecho de ESE
+ * par, no del track); en la ÚLTIMA página falta margen a la IZQUIERDA del
+ * primer item de ESE par. Las páginas intermedias están bien tal cual —
+ * solo hace falta resolver los bordes de la 1ra/última página.
+ *
+ * **22va vuelta — fix real, SIN margen en el primer item de la última
+ * página**: las vueltas 15–21 intentaron resolver el hueco IZQUIERDO de
+ * la última página con `margin-left` en su primer item (`ml-5`, luego
+ * `snap-start`, luego `scroll-margin-left`, luego corrigiendo a qué
+ * índice se le aplicaba) — el Tech Lead confirmó con una captura que el
+ * hueco seguía apareciendo ENTRE el penúltimo y el último item, no antes
+ * del penúltimo ("has pasado lo mismo ml-5 al penúltimo... no entiendo").
+ * Causa de fondo: `margin-left` en un item que NO es el primero del
+ * track (hay contenido real antes) nunca se sostiene — el navegador
+ * corrige el scroll hacia el snap-point de CADA tarjeta individual
+ * (`scroll-snap-type: x mandatory` + `snap-center` en todas), sin
+ * importar cuán preciso sea el cálculo del destino en JS ni qué
+ * combinación de `scroll-margin`/`snap-align` se use en ese item puntual.
+ *
+ * Fix real: se abandona el margen por completo y se aplica el MISMO
+ * truco ya confirmado para `item[1]` (16va vuelta, "ahora sí se ve genial
+ * al inicio") — reducir el ANCHO del item que necesita ceder espacio,
+ * nunca su margen. Para `item[1]` ese espacio es a su propia DERECHA (su
+ * propio hueco). Para el ÚLTIMO item real, es análogo: el `pr-5` del
+ * track (fijo, 20px, siempre al final del contenido scrolleable) más el
+ * ancho estándar de 2 tarjetas llenan EXACTO el viewport en `sm`–`lg`
+ * (identidad usada por `measureItemsPerView()` para medir 2 por vista) —
+ * agregar el `pr-5` de más sin ceder ancho hace que el navegador, en el
+ * límite físico de scroll, deba CORTAR 20px del lado IZQUIERDO del
+ * penúltimo item para que todo entre. Dándole al ÚLTIMO item real la
+ * MISMA reducción extra de ancho que `item[1]` (`calc(50%-30px)` en vez
+ * de `calc(50%-10px)`), la cuenta cierra exacta: penúltimo (ancho
+ * estándar) + gap + último (reducido) + `pr-5` = 100% del viewport — el
+ * penúltimo queda flush a la izquierda SIN necesitar ningún margen,
+ * override de snap, ni matemática de scroll aparte del clamp físico ya
+ * existente (20va vuelta, `scrollWidth - clientWidth` para la última
+ * página). Ver el nuevo condicional en `items.map` (`index === 1 ||
+ * index === items.length - 1`) — ya no hace falta calcular ni distinguir
+ * "el primer item de la última página" para nada (la vieja constante
+ * `lastPageFirstRealIndex` se elimina, sin uso).
+ */
+
+/**
  * Carousel por PÁGINA, con `itemsPorVista` MEDIDO en runtime — no fijo en
  * build time (2026-09-02, 3ra vuelta, mismo día). Historial de los 2
  * intentos previos que este reemplaza:
@@ -181,35 +260,105 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
  * Mismo patrón ya resuelto para `Logos.astro` el mismo día (ver ese
  * archivo para el detalle completo): el track deja de ser páginas
  * pre-armadas y pasa a ser scroll nativo ITEM POR ITEM, con cada tarjeta
- * midiendo su ancho vía `basis-*` responsive (ver `sm:basis-[calc(50%-
- * 1rem)] lg:basis-[calc(33.333%-1.334rem)]` más abajo, mismo breakpoint que
- * el grid estático de arriba). El script mide en runtime cuántas tarjetas
- * entran a la vez (`itemsPerView`) comparando el ancho real de la primera
- * tarjeta contra el ancho del track, arma `Math.ceil(items.length /
- * itemsPerView)` páginas/dots, y clona las primeras tarjetas al final del
- * track (ocultas, `aria-hidden`) para que la última página, si queda
- * incompleta, se autocomplete con testimonios reales del principio en vez
- * de dejar un hueco — nunca una tarjeta sola en una fila con espacio de
- * sobra. Con 5 testimonios: 1 visible (mobile) → 5 páginas; 2 visibles
- * (540–1079px) → 3 páginas; 3 visibles (1080px+) → 2 páginas.
+ * midiendo su ancho vía `basis-*` responsive (ver `lg:basis-[calc(33.333%-
+ * 1.334rem)]` más abajo, mismo breakpoint que el grid estático de arriba —
+ * la resta de esa fórmula es la mitad del gap real de `lg` entre 3
+ * tarjetas). El script mide en runtime cuántas tarjetas entran a la vez
+ * (`itemsPerView`) comparando el ancho real de la primera tarjeta contra
+ * el ancho del track, y arma `Math.ceil(items.length / itemsPerView)`
+ * páginas/dots.
+ *
+ * **REMOVIDO 2026-09-08 (19na vuelta)**: hasta acá, el carousel clonaba las
+ * primeras tarjetas reales y las pegaba al final del track (ocultas,
+ * `aria-hidden`) para que la última página incompleta se autocompletara
+ * "en vez de dejar un hueco", y el scroll/auto-avance daba la vuelta
+ * infinita (`page % totalPages`, wraparound real). El Tech Lead reportó
+ * "corrige... la cantidad configurada en el admin (5) pero me estás
+ * devolviendo 5" — no era un problema de cantidad (el backend/API sí
+ * respeta `content.limit`, confirmado); era que, al seguir scrolleando
+ * después del último testimonio real, el wraparound mostraba de nuevo los
+ * primeros — percibido como "se duplica y se vuelve infinito". Pedido
+ * explícito: quitar el loop, que el carousel se detenga en el último
+ * testimonio real. Se remueve la clonación completa (ver `<script>`, ya
+ * no hay `cloneCount`/`clones`) y la navegación pasa de wraparound
+ * (`% totalPages`) a CLAMP (`Math.min(page, totalPages - 1)`) — el
+ * auto-avance se detiene solo al llegar a la última página, no vuelve a
+ * la primera. La última página, si queda con menos testimonios que
+ * `itemsPerView`, simplemente se ve con ese hueco real (menos tarjetas),
+ * en vez de autocompletarse con duplicados.
+ *
+ * **Intento 2026-09-08 (11va/12va vuelta) — REVERTIDO en la 13va**: sobre
+ * 2 mensajes ambiguos del Tech Lead ("deberian verse... 1 con la mitad de
+ * relleno del siguiente testimonio", luego "falta centrar mejor y pasar
+ * de 1 en 1 al centro") se interpretó un pedido de rediseño del rango
+ * `sm`–`lg` (540–1079px) de "2 tarjetas completas" a "1 activa + peek de
+ * la siguiente" (`Math.floor` en `measureItemsPerView()`, `sm:px-[25%]`
+ * en el track). El resultado se rompió en vivo (captura con ~5 tarjetas
+ * angostas amontonadas) y el Tech Lead lo confirmó tajante: "se pudrio
+ * todo, te confundiste... tiene que ser de 2 en 2 y centrados" — el spec
+ * SIGUE siendo el original de 2026-09-02 ("1 en 1, de 2 en 2 y 3 en 3"),
+ * sin cambios. Revertido por completo a la 10ma vuelta.
  */
 ---
 
-<section class="w-full" style={sectionStyle || undefined}>
-  <div class={`mx-auto flex max-w-6xl flex-col items-center gap-12 px-4 sm:px-6 lg:px-8 ${paddingYClass}`}>
+<section class="relative w-full" style={sectionStyle || undefined}>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
+
+  {/*
+    2026-09-07, pedido del Tech Lead (3ra vuelta sobre este bloque): "que sea
+    fullwidth solo menor a 1080px en esta seccion" — refiriéndose al
+    contenedor padre completo (heading + carousel + botón "Ver más"), no solo
+    al wrapper del carousel ya tratado arriba.
+
+    CORRECCIÓN 2026-09-08 (8va vuelta, el Tech Lead encontró la causa él
+    mismo): "el container de la section se cambio a px-0, pero que menores a
+    540px se regrese el px-5" — por debajo de `sm`/540px (donde el carousel
+    muestra 1 sola tarjeta a la vez) el contenedor SÍ vuelve a tener su
+    padding propio de 20px (`px-5`); el fullwidth real de este contenedor
+    queda acotado a `sm`–`lg` (540–1079px, donde se ven 2 tarjetas con peek).
+    El heading y el botón mantienen su propio inset condicional
+    (`sm:px-5 lg:px-0` abajo — SOLO en ese mismo rango intermedio, ya no en
+    `base`, porque ahí el padding vuelve a salir de acá) para no pegarse al
+    borde real ni duplicar el padding.
+  */}
+  <div class={`mx-auto flex max-w-6xl flex-col items-center gap-12 px-5 sm:px-0 lg:px-8 ${paddingYClass}`}>
     {
-      (block.pretitle || block.title || block.subtitle) && (
-        <div class="flex w-full flex-col items-center gap-1 text-center">
-          {block.pretitle && <p class="w-full text-sm font-light tracking-[0.2em] uppercase opacity-80">{block.pretitle}</p>}
-          {block.title && <h2 class="w-full text-3xl font-bold sm:text-4xl md:text-2xl 3md:text-3xl 2xl:text-4xl 5xl:text-[40px]">{block.title}</h2>}
-          {block.subtitle && <p class="w-full text-lg font-light opacity-90 md:text-base">{block.subtitle}</p>}
-        </div>
-      )
+      /* CORRECCIÓN 2026-09-10: markup movido a `BlockHeading.astro` (partial
+       * compartido — "todos los headings deberian ser... un solo partial
+       * component reutilizado"). Único cambio real de comportamiento en
+       * este bloque específico: pretitle/subtítulo dejan de usar
+       * `opacity-80`/`opacity-90` — el Tech Lead pidió manejar color
+       * explícito, no opacidad ("mejor se maneja con color... y si no se
+       * configuró igual estamos en problemas"). Este bloque tiene fondo
+       * SÓLIDO configurable por instancia (`properties.background_color`,
+       * ej. `#206576` en los 3 usos sembrados hoy) + `text_color` explícito
+       * (`#ffffff` en esos mismos 3 casos) que ya cascadea a los 3 campos
+       * vía `style` del `<section>` — forzar acá los MISMOS colores de
+       * marca que usan RichText/Features (`text-cicaindigo-500`, un tono
+       * oscuro) rompería el contraste sobre ese fondo oscuro. Por eso NO
+       * se pasa ningún `*ColorClass`: los 3 campos heredan el color
+       * ambiente de la sección (antes solo lo hacía el título; ahora
+       * pretitle/subtítulo también, a full opacidad, sin el matiz más tenue
+       * que daba la opacidad — si se quiere ese matiz de vuelta, tendría
+       * que ser un color explícito distinto por prop, no opacidad). */
     }
+    <BlockHeading
+      pretitle={block.pretitle}
+      title={block.title}
+      subtitle={block.subtitle}
+      wrapperClass="flex w-full flex-col items-center gap-1 text-center sm:px-5 lg:px-0"
+    />
 
     {
       items.length > 0 && !useCarousel && (
-        <div class="grid w-full gap-8 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="grid w-full gap-8 sm:grid-cols-2 sm:px-5 lg:grid-cols-3 lg:px-0">
           {items.map((item) => (
             <blockquote class="testimonial-card flex flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 2lg:p-6 xl:p-10" style={cardStyle || undefined}>
               {item.avatar?.url ? (
@@ -237,14 +386,162 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
 
     {
       items.length > 0 && useCarousel && (
-        <div class="w-full" data-testimonials-carousel>
+        // `mx-0` (2026-09-08, 8va vuelta — el Tech Lead encontró la causa
+        // él mismo: "ya encontre el container de la section se cambio a
+        // px-0, pero que menores a 540px se regrese el px-5, entonces el
+        // wrapper del carousel seguía con `-mx-4 sm:-mx-6 lg:mx-0` sera
+        // mejor que regrese a mx-0"). Historial: este wrapper usaba
+        // `-mx-4 sm:-mx-6 lg:mx-0`, un margen negativo pensado para
+        // CANCELAR el padding que el contenedor padre tenía en su momento
+        // (`px-4 sm:px-6 lg:px-8`). En la 3ra vuelta (mismo día, "que sea
+        // fullwidth solo menor a 1080px en esta seccion") el padding del
+        // PADRE pasó a `px-0`/`sm:px-0` por debajo de `lg` — pero este
+        // `-mx-4 sm:-mx-6` se quedó sin actualizar, cancelando un padding
+        // que ya no existía ahí: el resultado era un margen negativo real
+        // (no una cancelación), wrapper más ancho que el propio viewport.
+        // Ahora, con la 8va vuelta, el padre vuelve a tener `px-5` por
+        // debajo de `sm`/540px (ver comentario de arriba) — así que YA NO
+        // hace falta ningún margen, ni positivo ni negativo: `mx-0` a
+        // secas. Por debajo de `sm`, el wrapper hereda el `px-5` del
+        // padre (inset de 20px, ya NO edge-to-edge — corrección explícita
+        // de esta vuelta); entre `sm` y `lg` el padre no tiene padding
+        // propio, así que el wrapper sigue edge-to-edge de verdad; en
+        // `lg`+, dentro del padding compartido del padre (grid de
+        // escritorio).
+        <div class="mx-0 w-full" data-testimonials-carousel>
+          {
+            /*
+             * SIN padding propio en el track (corrección, mismo día): "al
+             * centrar uno siempre al centro, se muestra el anterior
+             * elemento una parte de relleno y el siguiente elemento una
+             * parte de relleno tambien... tanto el siguiente como el
+             * anterior deben pegarse a los extremos como parte de la
+             * ventana o viewport" — con `snap-center`, la tarjeta activa
+             * SIEMPRE deja asomar un "relleno" (peek) de la anterior y la
+             * siguiente a los costados (es la naturaleza de centrar algo
+             * más angosto que el viewport) — el `px-5` de la vuelta previa
+             * metía un gutter EXTRA entre ese peek y el borde real de la
+             * pantalla, cuando el pedido es que el peek mismo llegue justo
+             * hasta el borde, sin nada en el medio. El breakout del
+             * wrapper (`-mx-4 sm:-mx-6 lg:mx-0`, ver arriba) sigue
+             * haciendo falta igual — sin eso, el padding del contenedor
+             * PADRE (heading/botón) seguiría dejando ese mismo gutter no
+             * deseado.
+             * `sm:gap-5` (2026-09-08, 14va vuelta: "aumentaremos el
+             * espacio entre ellos (gap) podria ser un 20px" — sube desde
+             * los 10px de la 9na vuelta) — SOLO en el rango de 2 tarjetas
+             * por vista (`sm`–`lg`, 540–1079px); `gap-5` = 1.25rem = 20px
+             * exacto en la escala de Tailwind. `gap-8` (32px) se mantiene
+             * en `base` (1 tarjeta) y vuelve explícito en `lg` (grid de 3
+             * columnas de escritorio).
+             *
+             * REVERTIDO (2026-09-08, 13va vuelta): la 11va/12va vuelta
+             * había cambiado esto a "1 tarjeta activa + peek de la
+             * siguiente" (`sm:px-[25%]`, `Math.floor` en
+             * `measureItemsPerView()`) interpretando 2 mensajes ambiguos
+             * del Tech Lead como un pedido de rediseño — el resultado se
+             * rompió en vivo (captura con ~5 tarjetas angostas amontonadas,
+             * nada centrado) y el Tech Lead lo confirmó tajante: "se
+             * pudrio todo, te confundiste... tiene que ser de 2 en 2 y
+             * centrados". Se vuelve exactamente al estado de la 10ma
+             * vuelta: sin padding propio en el track (el `pr-5` de abajo
+             * es el único), sin `Math.floor` (ver `measureItemsPerView()`
+             * más abajo, vuelve a `Math.round`).
+             */
+          }
           <div
-            class="testimonials-track flex snap-x snap-mandatory gap-8 overflow-x-auto scroll-smooth pb-2"
+            class="testimonials-track flex snap-x snap-mandatory gap-8 overflow-x-auto scroll-smooth pr-5 pb-2 sm:gap-5 lg:gap-8"
             data-testimonials-track
           >
-            {items.map((item) => (
+            {items.map((item, index) => (
+              <>
+                {
+                  /*
+                   * 2026-09-07 (5ta vuelta, fix real): el `mr-6` (luego
+                   * `mr-5`, ver 6ta vuelta abajo) en el ÚLTIMO item real NO
+                   * llegaba a mostrarse — el wraparound (más abajo,
+                   * `cloneNode`) SIEMPRE agrega clones detrás del último item
+                   * real cuando el carousel está activo (`isOverflowing`),
+                   * así que ese último item real nunca es el último hijo
+                   * real del track: su margen quedaba a mitad de camino,
+                   * entre él y el primer clon, no en el borde verdadero
+                   * donde termina el scroll. El `ml-*` del PRIMER item sí
+                   * funciona porque nada se clona ANTES — ese borde es
+                   * estable. Fix: el margen inicial sigue siendo margen de
+                   * item (borde estable), pero el margen final pasa a ser
+                   * `padding-right` del track (ver `data-testimonials-track`
+                   * arriba) — vive en el contenedor, así que aparece después
+                   * de lo que sea que termine ocupando el último lugar del
+                   * scroll (item real o clon), no atado a un hijo específico.
+                   * Mismo principio ya documentado en este archivo/
+                   * `Features.astro`: gutters de borde en el CONTENEDOR, no
+                   * en márgenes de hijos.
+                   *
+                   * 2026-09-08 (6ta vuelta): `ml-6`/`pr-6` (24px) del pedido
+                   * original ("para que pueda quedar estetico") bajan a
+                   * `ml-5`/`pr-5` (20px) — captura de DevTools del Tech Lead
+                   * sobre `Testimonials.astro`: "si te fijas en el area del
+                   * bloque de cada testimonio, tiene una separacion o
+                   * espacio al margen de la ventana, si lo comparamos con el
+                   * pr-5 o mr-5 del contenido de los elementos de las otras
+                   * secciones" — 20px (`*-5`) es el gutter estándar del
+                   * resto del sitio (mismo valor ya usado en el carousel de
+                   * `Features.astro` y en el "alineado al cuerpo de la
+                   * página" de otras secciones); 24px (`*-6`) quedaba
+                   * inconsistente.
+                   *
+                   * REVERTIDO (2026-09-08, 13va vuelta): la 11va/12va vuelta
+                   * había puesto `ml-5 sm:ml-0 lg:ml-5` acá (parte del
+                   * rediseño "1 activa + peek" que se revirtió por completo,
+                   * ver comentario de `data-testimonials-track` arriba) — el
+                   * Tech Lead confirmó que el diseño correcto sigue siendo
+                   * el de la 6ta vuelta: `ml-5` fijo en las 3 rangos, sin
+                   * condicionales por breakpoint.
+                   *
+                   * Fix real para item[1] (borde derecho de la 1ra página),
+                   * CONFIRMADO en vivo ("ahora sí se ve genial al inicio",
+                   * 16va vuelta): en vez de margen, se ACHICA su propio
+                   * ancho 20px extra (`calc(50%-30px)` en vez de
+                   * `calc(50%-10px)`) — a `scrollLeft: 0` (posición fija) el
+                   * hueco que deja un ancho más chico es real y visible, no
+                   * se lo "come" ningún hermano posterior.
+                   *
+                   * El primer item de la ÚLTIMA página (el "penúltimo" real)
+                   * pasó por 6 intentos fallidos seguidos (15va–21va vuelta:
+                   * margen simple → offset en JS → `snap-start` →
+                   * `scroll-margin-left` → clamp al límite físico de scroll
+                   * → corrección del índice) — el Tech Lead confirmó con una
+                   * captura que el hueco seguía apareciendo ENTRE el
+                   * penúltimo y el último item (nunca antes del penúltimo),
+                   * sin importar cuán preciso fuera el destino de scroll ni
+                   * qué combinación de propiedades de snap se probara.
+                   *
+                   * Causa de fondo, recién identificada (22va vuelta):
+                   * `margin-left` en un item que NO es el primero del track
+                   * (hay contenido real antes de él) nunca se sostiene — el
+                   * navegador corrige el scroll hacia el snap-point de CADA
+                   * tarjeta individual, sin importar el cálculo. Fix real:
+                   * se abandona el margen por completo. Mismo truco de
+                   * `item[1]` (reducir ANCHO, nunca margen) pero aplicado al
+                   * ÚLTIMO item real (`index === items.length - 1`) en vez
+                   * del penúltimo — el `pr-5` del track (20px, fijo, al
+                   * final de todo el contenido scrolleable) más 2 tarjetas
+                   * de ancho estándar llenan EXACTO el viewport en esta
+                   * vista (misma cuenta que usa `measureItemsPerView()`);
+                   * sin ceder ancho en algún lado, el límite físico de
+                   * scroll (`scrollWidth - clientWidth`, 20va vuelta) corta
+                   * 20px del lado IZQUIERDO del penúltimo para que todo
+                   * entre — exactamente el síntoma reportado. Dándole al
+                   * ÚLTIMO real la misma reducción extra que `item[1]`
+                   * (`calc(50%-30px)`), la cuenta cierra exacta: penúltimo
+                   * (ancho estándar, SIN ninguna clase especial) + gap +
+                   * último (reducido) + `pr-5` = 100% del viewport — el
+                   * penúltimo queda flush a la izquierda sin margen, sin
+                   * overrides de snap, nada.
+                   */
+                }
               <blockquote
-                class="testimonial-card flex shrink-0 basis-full snap-center flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:basis-[calc(50%-1rem)] sm:p-10 lg:basis-[calc(33.333%-1.334rem)] 2lg:p-6 xl:p-10"
+                class={`testimonial-card flex shrink-0 basis-full snap-center flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors ${index === 1 || index === items.length - 1 ? 'sm:basis-[calc(50%-30px)]' : 'sm:basis-[calc(50%-10px)]'} sm:p-10 lg:basis-[calc(33.333%-1.334rem)] 2lg:p-6 xl:p-10 ${index === 0 ? 'ml-5' : ''}`}
                 style={cardStyle || undefined}
                 data-testimonials-item
               >
@@ -266,6 +563,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
                   {item.role && <p class="text-sm italic opacity-80">{item.role}</p>}
                 </footer>
               </blockquote>
+              </>
             ))}
           </div>
 
@@ -276,11 +574,19 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
 
     {
       showLink && link && (
+        /* Hover: 2026-09-11 (pedido del Tech Lead, con captura de este
+        botón sobre el fondo teal: "es white y no cambia a cicagold-500")
+        — default `border-current`/texto heredado (`properties.text_color`
+        del bloque, `#ffffff` en el contenido sembrado) → hover explícito
+        a `cicagold-500` en borde Y texto (mismo criterio: botón OUTLINE
+        sobre fondo de color → hover `cicagold-500`, distinto del caso
+        "default cicaindigo sobre fondo claro" → hover `cicagold-600`).
+        Antes: `hover:bg-white/10` (velo sutil, sin dorado). */
         <a
           href={link.href ?? '#'}
           target={link.target}
           rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
-          class="mt-4 inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-current px-8 text-sm font-bold tracking-[0.1em] uppercase transition hover:bg-white/10"
+          class="hover:border-cicagold-500 hover:text-cicagold-500 mt-4 inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-current px-8 text-sm font-bold tracking-[0.1em] uppercase transition sm:mx-5 lg:mx-0"
         >
           <Icon name="ph:eye" size={18} aria-hidden="true" />
           {link.label}
@@ -357,6 +663,15 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
   // las tuvo este bloque, solo dots + drag + auto-avance), y el intervalo
   // de auto-avance es más largo (5s, ya establecido desde 2026-08-31 —
   // tiene sentido leer un testimonio completo antes de que cambie).
+  //
+  // 2026-09-08 (19na vuelta): SIN wraparound — ya no se clonan tarjetas al
+  // final del track. Ver docblock del frontmatter para el porqué (reporte
+  // del Tech Lead: el loop infinito se percibía como testimonios
+  // "duplicándose" más allá de la cantidad configurada en el admin). El
+  // carousel ahora es de páginas REALES únicamente; la navegación hace
+  // CLAMP en vez de dar la vuelta (ver `scrollToIndex`), y la última
+  // página, si queda con menos tarjetas que `itemsPerView`, se ve tal cual
+  // — sin autocompletar con duplicados.
   function initTestimonialsCarousels() {
     const roots = document.querySelectorAll('[data-testimonials-carousel]');
 
@@ -370,28 +685,9 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
 
       if (!(track instanceof HTMLElement) || realItems.length <= 1) return;
 
-      // Máximo de tarjetas visibles a la vez según la spec del bloque (1
-      // mobile / 2 `sm` / 3 `lg`, ver docblock del frontmatter) — tope de
-      // cuántos testimonios hace falta clonar para que cualquier página,
-      // en cualquier breakpoint, se autocomplete con testimonios reales
-      // del principio (no clones de clones).
-      const MAX_ITEMS_PER_VIEW_SPEC = 3;
-      const cloneCount = Math.min(realItems.length, MAX_ITEMS_PER_VIEW_SPEC);
-      const clones: HTMLElement[] = [];
-      for (let i = 0; i < cloneCount; i++) {
-        const clone = realItems[i].cloneNode(true) as HTMLElement;
-        clone.removeAttribute('data-testimonials-item');
-        clone.dataset.testimonialsClone = 'true';
-        clone.setAttribute('aria-hidden', 'true');
-        clone.setAttribute('tabindex', '-1');
-        track.appendChild(clone);
-        clones.push(clone);
-      }
-      // `allItems` direcciona posiciones de scroll (reales + clones al
-      // final) — una página `p` empieza en el testimonio real `p *
-      // itemsPerView`, que puede caer dentro de los clones cuando la
-      // última página real queda incompleta (eso es el wraparound).
-      const allItems = [...realItems, ...clones];
+      // `allItems` direcciona posiciones de scroll — sin wraparound (19na
+      // vuelta), son directamente los testimonios reales, ninguna copia.
+      const allItems = [...realItems];
 
       const intervalMs = 5000;
       const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -399,6 +695,18 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       let current = 0;
       let timer: number | undefined;
       let resumeTimer: number | undefined;
+      // 2026-09-08 (23va vuelta): sincroniza el dot activo con la
+      // posición REAL del scroll, sin importar cómo se movió (drag con
+      // Pointer Events, swipe táctil nativo si el navegador lo toma antes
+      // que nuestro handler, trackpad/wheel horizontal, flechas de
+      // teclado con foco). Antes, el dot solo se actualizaba en 3 lugares
+      // puntuales (click en un dot, `onPointerUp`, auto-avance) — un
+      // swipe que el navegador maneja por su cuenta (o que termina en una
+      // posición que `onPointerUp` no vio, ej. con momentum/inercia
+      // después de soltar el dedo) dejaba el dot desactualizado, y el
+      // auto-avance retomaba desde ese `current` viejo — "el indicador
+      // dots no se actualiza... luego sigue su curso y marca otra cosa".
+      let scrollSyncTimer: number | undefined;
       let isOverflowing = false;
       // Cuántos testimonios entran a la vez en el viewport actual —
       // medido en `updateOverflow()`, cambia por breakpoint.
@@ -407,11 +715,34 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       let totalPages = 1;
       let dots: Element[] = [];
 
+      // 2026-09-08 (20va vuelta): reemplaza el intento de las vueltas
+      // 16–18 (offset de -20px en JS, luego `snap-start`, luego
+      // `scroll-margin-left` — ninguno mostró el margen en vivo, "sigue
+      // igual" según el Tech Lead). Ese enfoque calculaba un destino
+      // "a mano" (`offsetLeft - 20px`) que casi nunca coincidía con el
+      // límite real de scroll (sobraba el `pr-5` final, y antes de la 19na
+      // vuelta también los clones del wraparound) — el navegador tenía
+      // margen de sobra para "corregir" el scroll lejos de ese destino.
+      //
+      // Fix real: en vez de calcular un destino aproximado, para la
+      // ÚLTIMA página se apunta directo al MÁXIMO scroll posible
+      // (`scrollWidth - clientWidth`). Es un límite físico — no hay "más
+      // allá" a donde el navegador pueda corregir, exactamente el mismo
+      // principio por el que el `ml-5` del PRIMER item (página 0) siempre
+      // funcionó sin ningún truco: `scrollLeft: 0` también es un límite
+      // físico. Con esto, el `sm:ml-5` del primer item de la última
+      // página y el `pr-5` final del track quedan dentro del viewport tal
+      // cual están en el DOM — ya no hace falta `snap-start` ni
+      // `scroll-margin-left` en ese item (ver `items.map`, clases
+      // simplificadas de vuelta a solo `sm:ml-5 lg:ml-0`).
       function scrollToIndex(page: number) {
-        const next = ((page % totalPages) + totalPages) % totalPages;
-        const itemIndex = Math.min(next * itemsPerView, allItems.length - 1);
-        const target = allItems[itemIndex] as HTMLElement;
-        track!.scrollTo({ left: target.offsetLeft - (track as HTMLElement).offsetLeft, behavior: 'smooth' });
+        const trackEl = track as HTMLElement;
+        const next = Math.max(0, Math.min(page, totalPages - 1));
+        const isLastPage = next === totalPages - 1;
+        const left = isLastPage
+          ? trackEl.scrollWidth - trackEl.clientWidth
+          : (allItems[Math.min(next * itemsPerView, allItems.length - 1)] as HTMLElement).offsetLeft - trackEl.offsetLeft;
+        trackEl.scrollTo({ left, behavior: 'smooth' });
         setActive(next);
       }
 
@@ -428,10 +759,22 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
         timer = undefined;
       }
 
+      // 2026-09-08 (19na vuelta): el auto-avance se DETIENE al llegar a la
+      // última página en vez de dar la vuelta a la primera (antes, con
+      // wraparound, `scrollToIndex(current + 1)` + `% totalPages` producía
+      // el loop infinito). Sin esto, con `scrollToIndex` ya clampeado
+      // (ver arriba), el timer seguiría disparando cada 5s sin mover nada
+      // — mejor cortar el intervalo apenas se llega al final.
       function start() {
         if (prefersReducedMotion || !isOverflowing) return;
         stop();
-        timer = window.setInterval(() => scrollToIndex(current + 1), intervalMs);
+        timer = window.setInterval(() => {
+          if (current >= totalPages - 1) {
+            stop();
+            return;
+          }
+          scrollToIndex(current + 1);
+        }, intervalMs);
       }
 
       // Pausa el auto-avance mientras el usuario interactúa (drag/swipe,
@@ -444,17 +787,42 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
         resumeTimer = window.setTimeout(start, 2500);
       }
 
+      // 2026-09-08 (23va vuelta): en cada evento de scroll (venga de
+      // donde venga: drag manual, swipe táctil nativo, trackpad/wheel,
+      // momentum tras soltar el dedo, `scrollToIndex()` propio) se
+      // reprograma un timeout corto — cuando el scroll deja de disparar
+      // eventos por 120ms (heurística estándar de "scroll asentado"), se
+      // sincroniza el dot activo con `nearestPage()`, la página REAL más
+      // cercana a donde quedó el scroll. Separado de `pauseThenResume()`
+      // (que sigue controlando el auto-avance) porque acá NO se llama a
+      // `scrollToIndex()` — no se fuerza ningún re-snap, solo se pone al
+      // día cuál dot está activo, sin pelear con la posición donde el
+      // usuario/navegador ya asentó el scroll.
+      function handleScrollSettled() {
+        if (scrollSyncTimer) window.clearTimeout(scrollSyncTimer);
+        scrollSyncTimer = window.setTimeout(() => setActive(nearestPage()), 120);
+      }
+
       /** Busca la página cuyo item inicial está más cerca del scroll actual (0..totalPages-1). */
       function nearestPage(): number {
         const trackEl = track as HTMLElement;
         const targetLeft = trackEl.scrollLeft + trackEl.offsetLeft;
+        // Mismo criterio de `scrollToIndex()` (20va vuelta): la última
+        // página se compara contra el máximo físico de scroll, no contra
+        // el `offsetLeft` de un item — así un drag/swipe soltado cerca del
+        // final "elige" esa página con el mismo destino exacto que
+        // produciría un click en su dot.
+        const maxScrollLeftAsOffset = trackEl.scrollWidth - trackEl.clientWidth + trackEl.offsetLeft;
 
         let closest = 0;
         let closestDistance = Infinity;
 
         for (let page = 0; page < totalPages; page++) {
-          const itemIndex = Math.min(page * itemsPerView, allItems.length - 1);
-          const distance = Math.abs((allItems[itemIndex] as HTMLElement).offsetLeft - targetLeft);
+          const isLastPage = page === totalPages - 1;
+          const pagePosition = isLastPage
+            ? maxScrollLeftAsOffset
+            : (allItems[Math.min(page * itemsPerView, allItems.length - 1)] as HTMLElement).offsetLeft;
+          const distance = Math.abs(pagePosition - targetLeft);
           if (distance < closestDistance) {
             closestDistance = distance;
             closest = page;
@@ -479,6 +847,13 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
         const trackStyle = window.getComputedStyle(trackEl);
         const gapPx = Number.parseFloat(trackStyle.columnGap || trackStyle.gap || '32') || 32;
 
+        // REVERTIDO (2026-09-08, 13va vuelta): la 11va vuelta había
+        // cambiado esto a `Math.floor`, parte del rediseño "1 activa +
+        // peek" en el rango `sm`–`lg` — ese rediseño se revirtió por
+        // completo (ver comentario de `data-testimonials-track`, el Tech
+        // Lead confirmó "tiene que ser de 2 en 2 y centrados", no "1 en
+        // 1"). Vuelve a `Math.round`: 2 tarjetas por página en ese rango,
+        // como siempre fue desde la 9na/10ma vuelta.
         const measured = Math.round((trackEl.clientWidth + gapPx) / (itemWidth + gapPx));
         return Math.max(1, measured);
       }
@@ -518,13 +893,6 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
 
         const nextTotalPages = Math.max(1, Math.ceil(realItems.length / itemsPerView));
         isOverflowing = nextTotalPages > 1;
-
-        // Los clones solo deben ocupar ancho en el track cuando
-        // realmente hacen falta para completar una última página
-        // incompleta.
-        clones.forEach((clone) => {
-          clone.style.display = isOverflowing ? '' : 'none';
-        });
 
         if (nextTotalPages !== totalPages || dots.length !== nextTotalPages) {
           totalPages = nextTotalPages;
@@ -581,6 +949,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
       track.addEventListener('pointerup', onPointerUp);
       track.addEventListener('pointercancel', onPointerUp);
       track.addEventListener('scroll', pauseThenResume, { passive: true });
+      track.addEventListener('scroll', handleScrollSettled, { passive: true });
       root.addEventListener('mouseenter', stop);
       root.addEventListener('mouseleave', start);
       root.addEventListener('focusin', stop);

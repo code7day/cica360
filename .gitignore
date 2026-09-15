@@ -6,10 +6,12 @@ dist/
 .astro/
 
 # env / secretos — NUNCA commitear
+# (2026-09-12: contacto.php/ipinfo.php ya no usan un *.config.php propio,
+# leen este mismo .env vía public/_env.php — ver ADR-002, actualización
+# 2026-09-12, en docs/context/DECISIONS.md)
 .env
 .env.*
 !.env.example
-public/contacto.config.php
 
 # editor / SO
 .DS_Store

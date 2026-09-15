@@ -1,15 +1,72 @@
 ---
-/** Stub funcional — presentacional puro, sin JS. */
-import type { Block } from '../../lib/types';
+/**
+ * Grid de Servicios (`services_grid`) — reescrito por completo 2026-09-10
+ * (ver ADR-049 en genesis/docs/context/DECISIONS.md), cruzando puntualmente
+ * el límite Claude=datos/Antigravity=visual descrito en CLAUDE.md (mismo
+ * criterio ya usado en Hero.astro/Cta.astro/RichText.astro/Features.astro).
+ * Antes era un stub presentacional (`content.items[]` manual, sin imagen
+ * real ni país, `href`/`url`/`page_slug` sueltos) — ahora `content.items[]`
+ * llega YA RESUELTO por el backend contra la tabla real `services`
+ * (mismo patrón que `Testimonials.astro` contra `testimonials`, ver ese
+ * archivo), con la misma forma que `ServiceSummaryResource` (genesis) más
+ * `href`.
+ *
+ * DELIBERADAMENTE NO es un carousel/slider (a diferencia de
+ * `Testimonials.astro`/`Logos.astro`/el slider mobile de `Features.astro`):
+ * pedido explícito del Tech Lead viendo el mockup de la página "Servicios"
+ * ("ojo testimonials usa slides o sliders y eso no es el caso, aquí es modo
+ * grid") — es una grilla estática 1/2/3 columnas según breakpoint, sin GSAP,
+ * sin scroll-snap, sin arrastre. La ESTRUCTURA de sección sí sigue el mismo
+ * patrón estándar que el resto de los bloques con heading compartido
+ * (`Features`/`RichText`/`Logos`): `<section>` con fondo/padding_y +
+ * `BlockHeading` centrado + el contenido propio del bloque (acá, la
+ * grilla) — pedido explícito también: "la estructura de sección o bloque
+ * como los demás existentes que usa el partial heading".
+ *
+ * "Ver más servicios" (mockup: botón debajo del grid) — pedido del Tech
+ * Lead: "mostrar de 9 en 9... con scroll infinito pero manualmente
+ * ejecutado por ese botón... hasta llegar a mostrar todo". `cica360` es un
+ * sitio 100% estático sin servidor Node en producción y el token del API
+ * Stamless solo existe en build time (ver CLAUDE.md, ARCHITECTURE.md) — no
+ * hay forma de pedir "la próxima página" al API desde el navegador sin
+ * exponer ese token. Por eso el backend entrega TODOS los servicios ya
+ * resueltos en `content.items[]` (bloque de la página `/servicios` sembrado
+ * con `content.limit: null`, ver ADR-049) y este componente los hornea
+ * TODOS en el HTML estático — el botón "Ver más servicios" solo cambia
+ * `display` vía JS vanilla 100% client-side (mismo criterio "JS mínimo,
+ * sin dependencias" que ya usan el menú mobile de `Header.astro` y el
+ * carousel de `Hero.astro`), sin ningún fetch adicional en el navegador.
+ *
+ * Chips de filtro por país — mejora sugerida por este mismo asistente y
+ * confirmada por el Tech Lead ("lo que no está en el diseño y creo que sea
+ * útil sería mostrar unos chips o badges a manera de filtro"), NO parte del
+ * mockup original. Solo se renderizan si el catálogo tiene más de 1 país
+ * distinto entre sus items (con 0 o 1 país, un filtro no aportaría nada).
+ * Filtro y paginación combinados: cambiar de filtro reinicia el conteo
+ * visible a 9 sobre el subconjunto filtrado.
+ */
+import type { Block, ContentLink, Media, ServiceCountry } from '../../lib/types';
+import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
+import { Icon } from 'astro-icon/components';
+import BlockHeading from './BlockHeading.astro';
 
-interface ServiceItem {
-  title?: string;
-  subtitle?: string;
-  image?: { url: string | null; alt_text: string | null } | null;
-  page_slug?: string | null;
-  href?: string | null;
-  url?: string | null;
-  badge?: string | null;
+/**
+ * Reusa `ServiceCountry` de `types.ts` (ya existía, agregado con el resto
+ * del módulo de Servicios en ADR-044) — el resto de la forma es LOCAL, no
+ * compartida (mismo criterio ya documentado en `RichText.astro`: `content`/
+ * `properties` de un `Block` son forma libre según `type`, cada bloque tipa
+ * localmente lo que necesita). Mismo shape exacto que `ServiceSummaryResource`
+ * (genesis) más `href` — ver ADR-049.
+ */
+interface ServiceGridItem {
+  uuid: string;
+  slug: string;
+  href: string;
+  pretitle?: string | null;
+  title?: string | null;
+  subtitle?: string | null;
+  countries?: ServiceCountry[];
+  image?: Media | null;
 }
 
 interface Props {
@@ -17,25 +74,456 @@ interface Props {
 }
 
 const { block } = Astro.props;
-const content = block.content as { items?: ServiceItem[] };
+
+const content = block.content as { items?: ServiceGridItem[]; background_image?: Media | null };
 const items = content.items ?? [];
+
+interface ServicesGridProperties extends BackgroundColorProperties {
+  text_color?: string | null;
+  padding_y?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Declarada en `PropertiesSchema` (genesis), sin consumidor real acá — mismo caso que `animation` en `Features.astro`. */
+  animation?: 'none' | 'fade' | 'slide-up' | null;
+  show_link?: boolean;
+  /**
+   * 2026-09-11 (pedido del Tech Lead: "todos deberian permitir personalizar
+   * el fondo en 3 tipos") — imagen de fondo de la SECCIÓN (opcional, capa
+   * intermedia sobre `background_color`), mismo patrón que `Features.astro`/
+   * `Cta.astro`.
+   */
+  media_blend_mode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | null;
+  media_brightness?: number | null;
+  media_opacity?: number | null;
+  media_filter_saturate?: number | null;
+  media_filter_grayscale?: number | null;
+  media_filter_sepia?: number | null;
+  media_filter_contrast?: number | null;
+  media_filter_hue_rotate?: number | null;
+  media_filter_blur?: number | null;
+  overlay_opacity?: number | null;
+}
+
+const properties = (block.properties as ServicesGridProperties) ?? {};
+const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : ''].join(' ').trim();
+
+/** Mismos 6 filtros CSS + opacidad + blend mode que `Features.astro`/`Cta.astro` (`properties.media_*`, set genérico). */
+function backgroundImageEffectStyle(props: ServicesGridProperties): string {
+  const filters: string[] = [];
+  if (props.media_brightness != null) filters.push(`brightness(${props.media_brightness}%)`);
+  if (props.media_filter_saturate != null) filters.push(`saturate(${props.media_filter_saturate}%)`);
+  if (props.media_filter_grayscale != null) filters.push(`grayscale(${props.media_filter_grayscale}%)`);
+  if (props.media_filter_sepia != null) filters.push(`sepia(${props.media_filter_sepia}%)`);
+  if (props.media_filter_contrast != null) filters.push(`contrast(${props.media_filter_contrast}%)`);
+  if (props.media_filter_hue_rotate != null) filters.push(`hue-rotate(${props.media_filter_hue_rotate}deg)`);
+  if (props.media_filter_blur != null) filters.push(`blur(${props.media_filter_blur}px)`);
+
+  const opacity = (props.media_opacity ?? 100) / 100;
+  const blendMode = props.media_blend_mode ?? 'normal';
+
+  return `${filters.length > 0 ? `filter: ${filters.join(' ')};` : ''} opacity: ${opacity}; mix-blend-mode: ${blendMode};`;
+}
+const backgroundImageStyle = backgroundImageEffectStyle(properties);
+const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0));
+
+// Nota (2026-09-11, "reducir el padding top... para acercarlo al wave"): el
+// decorador wave del BlockHeading superior ya ocupa espacio visual propio,
+// así que el padding-top de esta sección se reduce ~20px respecto al
+// padding-bottom (que sí usa la escala py- completa) para acercar el grid
+// al wave sin tocar el respiro inferior del bloque.
+const PADDING_Y_CLASSES: Record<NonNullable<ServicesGridProperties['padding_y']>, string> = {
+  sm: 'pt-[20px] pb-10 3md:pt-[36px] 3md:pb-14',
+  md: 'pt-[36px] pb-14 3md:pt-[60px] 3md:pb-20',
+  lg: 'pt-[28px] pb-12 lg:pt-[60px] lg:pb-20',
+  xl: 'pt-[60px] pb-20 3md:pt-[108px] 3md:pb-32',
+};
+const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
+
+const link: ContentLink | undefined = block.links?.[0];
+const showLink = Boolean(properties.show_link) && Boolean(link?.href) && Boolean(link?.label);
+
+/**
+ * Botón "Ver todos los servicios" (opcional, `LinkSchema::makeSingle()` del
+ * lado de genesis) — mismo estilo `outline` + ícono "+" que `RichText.astro`
+ * (ver ese archivo para el criterio de `LINK_STYLE_CLASSES`), sin reinventar
+ * un estilo nuevo para un botón que cumple el mismo rol ("ver más de esto en
+ * otro lado").
+ */
+const LINK_STYLE_CLASSES: Record<string, string> = {
+  primary: 'border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900',
+  // 2026-09-11: REVERTIDO — la regla "default blanco → hover cicagold-500"
+  // aplica a botones OUTLINE sobre fondo de color (ver `Testimonials.astro`),
+  // no a este `secondary` (relleno sólido). Corrección del Tech Lead:
+  // "entonces no era secondary, era los botones outline". Vuelve al
+  // valor original.
+  secondary: 'border-cicaindigo-500 bg-cicaindigo-500 text-white hover:bg-cicaindigo-700',
+  // 2026-09-11 (pedido del Tech Lead, con captura del design system real:
+  // "cuando son secundarios es asi los hovers segun designsystem", luego
+  // aclarado: "si default: cicaindigo al hover es: cicagold-600" — border
+  // Y texto, uniforme) — fondo se mantiene transparente. Ver
+  // `RichText.astro` para el detalle completo del cambio.
+  outline: 'border-cicaindigo-500 bg-transparent text-cicaindigo-500 hover:border-cicagold-600 hover:text-cicagold-600',
+  text: 'border-transparent bg-transparent text-cicaindigo-500 underline-offset-4 hover:underline',
+};
+const linkStyleClass = LINK_STYLE_CLASSES[link?.type ?? 'outline'] ?? LINK_STYLE_CLASSES.outline;
+
+/**
+ * "Ver más servicios" de a 9 (ver docblock del frontmatter) — el estado
+ * INICIAL (qué se ve al cargar la página, sin JS) se decide acá en build
+ * time vía `index >= INITIAL_VISIBLE` en el markup de abajo, para que no
+ * haya parpadeo mientras el `<script>` carga (sin JS, igual se ven
+ * exactamente los primeros 9 — degrada con gracia, simplemente sin botón
+ * funcional). El `<script>` de más abajo toma el control desde ahí.
+ */
+const INITIAL_VISIBLE = 6;
+const showLoadMore = items.length > INITIAL_VISIBLE;
+
+/**
+ * Chips de país (ver docblock del frontmatter) — deduplicados por `iso`,
+ * en el orden en que aparecen los items (mismo criterio simple que
+ * `Logos.astro` para su propio orden "tal cual quedó armado").
+ */
+const distinctCountries = items
+  .flatMap((item) => item.countries ?? [])
+  .reduce<ServiceCountry[]>((acc, country) => {
+    if (!acc.some((existing) => existing.iso === country.iso)) {
+      acc.push(country);
+    }
+    return acc;
+  }, []);
+
+/**
+ * Chip "General" (2026-09-11, pedido del Tech Lead: "falta el filtro
+ * general o globales") — los servicios sin país específico
+ * (`countries: []`, "Regional/Global", mismo criterio que el ícono
+ * `flag_GENERAL.webp` de cada card) antes solo se veían bajo "Todos", sin
+ * forma de filtrarlos aparte. Se suma como una categoría más del filtro
+ * (`data-services-filter="general"`, ver <script>) si existe al menos un
+ * item así. La sección de filtros ahora se muestra si hay más de 1
+ * CATEGORÍA en total entre países + "general" (antes solo miraba
+ * `distinctCountries.length`), para no perder el filtro cuando el catálogo
+ * mezcla, por ejemplo, un solo país + servicios regionales.
+ */
+const hasGeneralItems = items.some((item) => (item.countries?.length ?? 0) === 0);
+const showFilters = distinctCountries.length + (hasGeneralItems ? 1 : 0) > 1;
+
+/**
+ * Decorador `wave` sobrepuesto al pie de la imagen de cada card (pedido del
+ * Tech Lead: "falta el decorador wave sobrepuestas de cada imagen" — faltaba
+ * en la 1ra vuelta de este componente). MISMO path SVG que `decorator_top`/
+ * `decorator_bottom` de `RichText.astro`/`Heading.astro` (no reinventado —
+ * mismo shape `wave` en todo el sitio), relleno blanco fijo (no configurable
+ * por `properties`, a diferencia del decorador de SECCIÓN de esos otros
+ * bloques): acá cumple un rol puramente decorativo de transición entre la
+ * foto y el área de texto de la card, que siempre tiene fondo blanco
+ * (`bg-white` de la card) — no un color de marca elegible desde el admin.
+ *
+ * CORRECCIÓN (mismo día, 2da vuelta) — bug real reportado con captura de
+ * DevTools: "no me gusta el decorador cuando se estira o adapta a las
+ * diferentes resoluciones, se muestra una linea de separación del svg". La
+ * 1ra versión posicionaba el SVG `absolute bottom-0` DENTRO del mismo
+ * contenedor `overflow-hidden` que la imagen — al redimensionar la card
+ * (grid responsive, ancho fraccionario), el borde inferior calculado para
+ * el SVG (`bottom: 0` contra el padding-box del contenedor) y el borde real
+ * de la imagen (`h-full`, subpíxeles de un `object-cover` reescalado) podían
+ * no coincidir exactamente, dejando asomar 1px del `bg-gray-100` de fondo
+ * entre ambos. El Tech Lead verificó en vivo (DevTools) que envolver
+ * imagen+banderas en su PROPIO contenedor `overflow-hidden` anidado, y
+ * mover el SVG a flujo normal (`relative`, ya NO `absolute`) desplazado
+ * hacia arriba con un `top` negativo (en vez de anclado a `bottom: 0`),
+ * elimina la costura — el contenedor EXTERIOR (con su propio
+ * `overflow-hidden` + alto fijo) es quien recorta el sobrante del SVG
+ * desplazado, sin depender del cálculo de "borde inferior exacto" que
+ * causaba el 1px de por medio. Estructura exacta validada por el Tech Lead,
+ * traducida acá a Tailwind (antes solo probada con `style` inline en
+ * DevTools) — ver el nesting real más abajo en el markup.
+ */
+const CARD_WAVE_PATH =
+  'M0,38 C 160,50 250,56 324,56 C 420,56 550,45 720,35 C 850,28 950,18 1044,18 C 1150,18 1300,30 1440,48 L1440,64 L0,64 Z';
 ---
 
-<section class="mx-auto max-w-6xl px-4 py-16">
-  {block.title && <h2 class="mb-8 text-center text-3xl font-bold">{block.title}</h2>}
-  <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+<section class="relative w-full" style={sectionStyle || undefined} data-services-grid>
+  {
+    content.background_image?.url && (
+      <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
+        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+      </div>
+    )
+  }
+  {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
+
+  <div class={`relative z-10 mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 sm:px-6 lg:px-8 ${paddingYClass}`}>
+    <BlockHeading
+      pretitle={block.pretitle}
+      title={block.title}
+      subtitle={block.subtitle}
+      wrapperClass="mx-auto flex w-full flex-col items-center gap-1 text-center"
+      pretitleColorClass="text-cicagold-600"
+      titleColorClass="text-cicaindigo-500"
+      subtitleColorClass="text-gray-500"
+    />
+
     {
-      items.map((item) => {
-        const href = item.href ?? item.url ?? '#';
-        return (
-          <a href={href} class="block rounded border border-gray-200 p-6 hover:shadow">
-            {item.image?.url && <img src={item.image.url} alt={item.image.alt_text ?? ''} class="mb-4 h-10 w-10" loading="lazy" />}
-            {item.badge && <span class="mb-2 inline-block rounded bg-gray-100 px-2 py-0.5 text-xs">{item.badge}</span>}
-            {item.title && <h3 class="text-lg font-semibold">{item.title}</h3>}
-            {item.subtitle && <p class="mt-1 text-sm text-gray-600">{item.subtitle}</p>}
+      showFilters && (
+        <div class="flex flex-wrap items-center justify-center gap-2" data-services-filters>
+          <button
+            type="button"
+            class="border-cicaindigo-500 bg-cicaindigo-500 cursor-pointer rounded-full border px-4 py-1 text-xs font-semibold text-white transition"
+            data-services-filter="all"
+            aria-pressed="true"
+          >
+            Todos
+          </button>
+          {distinctCountries.map((country) => (
+            <button
+              type="button"
+              class="hover:border-cicaindigo-500 hover:text-cicaindigo-500 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-gray-300 bg-white p-0.5 text-xs font-semibold text-gray-600 transition sm:pr-4"
+              data-services-filter={country.iso}
+              aria-pressed="false"
+            >
+              <img src={`/flags/flag_${country.iso}.webp`} alt="" class="h-7 w-7 rounded-full object-cover sm:h-5 sm:w-5" loading="lazy" />
+              {/* En mobile solo el ícono (2026-09-11, "en mobile ocultar labels y dejar los iconos") — "Todos" queda siempre con texto, no tiene ícono propio que lo reemplace. */}
+              <span class="hidden sm:inline">{country.name}</span>
+            </button>
+          ))}
+          {hasGeneralItems && (
+            <button
+              type="button"
+              class="hover:border-cicaindigo-500 hover:text-cicaindigo-500 inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-gray-300 bg-white p-0.5 text-xs font-semibold text-gray-600 transition sm:pr-4"
+              data-services-filter="general"
+              aria-pressed="false"
+            >
+              <img src="/flags/flag_GENERAL.webp" alt="" class="h-7 w-7 rounded-full object-cover sm:h-5 sm:w-5" loading="lazy" />
+              <span class="hidden sm:inline">Regional</span>
+            </button>
+          )}
+        </div>
+      )
+    }
+
+    {
+      /*
+      `flex flex-wrap justify-center` en vez de `grid grid-cols-3` (2026-09-11,
+      pedido del Tech Lead con capturas de Servicios/Casos de éxito cuando el
+      total no es múltiplo de 3: "se ve alineada la grilla a la izquierda...
+      mantener alineacion centrada") — un CSS Grid de columnas fijas SIEMPRE
+      alinea la última fila incompleta a la izquierda (llena celdas
+      izquierda→derecha, sin noción de "centrar el resto"); no hay ninguna
+      property de Grid que centre solo los items sobrantes de la última fila
+      sin JS ni `grid-column-start` calculado por item. Flexbox con
+      `flex-wrap` + `justify-content: center` sí lo hace nativamente: cada
+      item lleva un ancho FIJO (`w-*` de abajo, calculado como
+      `(100% - gaps) / columnas`, mismo resultado visual que el grid de 1/2/3
+      columnas anterior) en vez de que el contenedor reparta el espacio por
+      columna — con eso, una fila con menos items que el máximo por fila
+      queda centrada como grupo en vez de pegada a la izquierda.
+      */
+    }
+    <div class="flex flex-wrap justify-center gap-6" data-services-track>
+      {
+        items.map((item, index) => (
+          <a
+            href={item.href}
+            class="group flex w-full flex-col overflow-hidden rounded-2xl bg-white shadow-lg transition hover:-translate-y-1 hover:shadow-xl sm:w-[calc(50%-12px)] lg:w-[calc(33.333%-16px)]"
+            data-services-item
+            data-countries={(item.countries ?? []).map((country) => country.iso).join(',')}
+            style={index >= INITIAL_VISIBLE ? 'display: none;' : undefined}
+          >
+            <div class="relative h-48 w-full bg-gray-100">
+              <div class="relative z-[5] h-48 w-full overflow-hidden bg-gray-100">
+                {item.image?.url ? (
+                  <img
+                    src={item.image.url}
+                    alt={item.image.alt_text ?? item.title ?? ''}
+                    class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div class="bg-cicagold-500/10 text-cicaindigo-500 flex h-full w-full items-center justify-center text-3xl font-bold">
+                    {(item.title ?? '?').charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+
+              <svg
+                class="pointer-events-none relative -top-[30px] left-0 z-20 h-8 w-[101%]"
+                viewBox="0 0 1440 64"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <path d={CARD_WAVE_PATH} fill="white" />
+              </svg>
+
+              {
+                /*
+                 * Banderitas de país (2026-09-11, corrección del Tech Lead
+                 * con captura mockup vs. realidad): "las banderitas tienen
+                 * que bajar y posicionarse a la altura del decorador...
+                 * deberia salir de ser embebida por la capa de la imagen y
+                 * sacarse a lado del elemento del decorador... pero con
+                 * iconos". Antes vivían DENTRO del div de imagen
+                 * (`overflow-hidden`, `top-3 right-3`) como texto plano — se
+                 * sacan a este nivel (hermanas del `<svg>` de la ola, mismo
+                 * contenedor exterior SIN `overflow-hidden`) para poder
+                 * sobreponerse a la ola sin que el recorte de la imagen las
+                 * corte, y pasan de texto a ícono real (`public/flags/`,
+                 * copiados de `sources/flags/` — no los devuelve el API,
+                 * son un asset puramente del frontend, resuelto acá por
+                 * `country.iso`). Sin país específico ("Regional/Global",
+                 * `countries: []`) cae a `flag_GENERAL.webp` (mismo criterio
+                 * que documenta `Service::countriesResolved()` en genesis:
+                 * "Regional / Global" se muestra con un ícono de globo) en
+                 * vez de no mostrar nada.
+                 */
+              }
+              <div class="absolute right-3 bottom-1 z-30 flex items-center -space-x-2">
+                {
+                  (item.countries?.length ?? 0) > 0 ? (
+                    item.countries!.map((country) => (
+                      <img
+                        src={`/flags/flag_${country.iso}.webp`}
+                        alt={country.name}
+                        class="h-7 w-7 rounded-full object-cover shadow-md ring-[3px] ring-white"
+                        loading="lazy"
+                      />
+                    ))
+                  ) : (
+                    <img src="/flags/flag_GENERAL.webp" alt="Regional / Global" class="h-7 w-7 rounded-full object-cover shadow-md ring-[3px] ring-white" loading="lazy" />
+                  )
+                }
+              </div>
+            </div>
+
+            <div class="relative z-[5] flex flex-1 flex-col items-center px-6 pt-2 pb-6 text-center">
+              {item.pretitle && <p class="text-cicagold-600 mb-1 text-xs font-light tracking-[0.15em] uppercase">{item.pretitle}</p>}
+              {item.title && <h3 class="text-cicaindigo-500 text-lg font-bold">{item.title}</h3>}
+              {item.subtitle && <p class="mt-2 flex-1 text-sm text-gray-600">{item.subtitle}</p>}
+
+              <span class="border-cicagold-500 bg-cicagold-500 text-cicaindigo-500 hover:bg-cicagold-600 hover:text-cicaindigo-900 mt-4 inline-flex w-fit items-center gap-1.5 rounded-lg border px-4 py-2 text-xs font-bold tracking-[0.1em] uppercase transition">
+                Quiero saber
+                <Icon name="ph:plus" size={14} aria-hidden="true" />
+              </span>
+            </div>
           </a>
-        );
-      })
+        ))
+      }
+    </div>
+
+    {
+      showLoadMore && (
+        <div class="flex w-full justify-center">
+          {
+            /* Hover: 2026-09-11 (pedido del Tech Lead, con captura del design
+            system real — "Secondary View — Con ícono": "cuando son
+            secundarios es asi los hovers segun designsystem") — border+texto
+            a `cicagold-600` (`#D9A00F`), fondo se mantiene transparente
+            (antes rellenaba `bg-cicaindigo-500` sólido). */
+          }
+          <button
+            type="button"
+            class="border-cicaindigo-500 text-cicaindigo-500 hover:border-cicagold-600 hover:text-cicagold-600 inline-flex cursor-pointer items-center gap-2 rounded-lg border px-6 py-2.5 text-sm font-bold tracking-[0.1em] uppercase transition"
+            data-services-load-more
+          >
+            <Icon name="ph:eye" size={18} aria-hidden="true" />
+            Más servicios
+            <Icon name="ph:caret-down" size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )
+    }
+
+    {
+      showLink && link && (
+        <div class="flex w-full justify-center">
+          <a
+            href={link.href ?? '#'}
+            target={link.target}
+            rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
+            class={`inline-flex items-center justify-center gap-2 rounded-lg border px-6 py-2.5 text-sm font-bold tracking-[0.1em] uppercase transition ${linkStyleClass}`}
+          >
+            {link.label}
+            <Icon name="ph:plus" size={16} aria-hidden="true" />
+          </a>
+        </div>
+      )
     }
   </div>
 </section>
+
+<script>
+  /**
+   * "Ver más servicios" (de a 9) + filtro por país — 100% client-side sobre
+   * el HTML ya horneado en build (ver docblock del frontmatter: sin fetch
+   * al API desde el navegador). Scopeado por instancia de bloque
+   * (`data-services-grid`) para soportar más de un `services_grid` en la
+   * misma página sin que se pisen entre sí.
+   */
+  const STEP = 6;
+
+  document.querySelectorAll<HTMLElement>('[data-services-grid]').forEach((section) => {
+    const items = Array.from(section.querySelectorAll<HTMLElement>('[data-services-item]'));
+    const loadMoreBtn = section.querySelector<HTMLButtonElement>('[data-services-load-more]');
+    const filterButtons = Array.from(section.querySelectorAll<HTMLButtonElement>('[data-services-filter]'));
+
+    let activeFilter = 'all';
+    let visibleCount = STEP;
+
+    function matchesFilter(item: HTMLElement): boolean {
+      if (activeFilter === 'all') {
+        return true;
+      }
+
+      // Chip "Regional / Global" (2026-09-11, "falta el filtro general o
+      // globales"): un servicio sin países (`data-countries=""`) no matchea
+      // ningún ISO real — necesita su propio caso, no un ISO más.
+      if (activeFilter === 'general') {
+        return (item.dataset.countries ?? '') === '';
+      }
+
+      return (item.dataset.countries ?? '').split(',').includes(activeFilter);
+    }
+
+    function render(): void {
+      const matching = items.filter(matchesFilter);
+
+      matching.forEach((item, index) => {
+        item.style.display = index < visibleCount ? '' : 'none';
+      });
+
+      items
+        .filter((item) => !matchesFilter(item))
+        .forEach((item) => {
+          item.style.display = 'none';
+        });
+
+      if (loadMoreBtn) {
+        loadMoreBtn.style.display = matching.length > visibleCount ? '' : 'none';
+      }
+    }
+
+    loadMoreBtn?.addEventListener('click', () => {
+      visibleCount += STEP;
+      render();
+    });
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        activeFilter = button.dataset.servicesFilter ?? 'all';
+        visibleCount = STEP;
+
+        filterButtons.forEach((other) => {
+          const isActive = other === button;
+          other.setAttribute('aria-pressed', String(isActive));
+          other.classList.toggle('border-cicaindigo-500', isActive);
+          other.classList.toggle('bg-cicaindigo-500', isActive);
+          other.classList.toggle('text-white', isActive);
+          other.classList.toggle('border-gray-300', !isActive);
+          other.classList.toggle('bg-white', !isActive);
+          other.classList.toggle('text-gray-600', !isActive);
+        });
+
+        render();
+      });
+    });
+
+    render();
+  });
+</script>
