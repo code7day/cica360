@@ -240,6 +240,7 @@ const headerImage = service.image_detail ?? service.image;
             <div
               class="prose w-full max-w-none font-normal text-base text-gray-600 md:text-sm 3md:text-base [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_strong]:text-gray-800 [&_b]:font-bold [&_b]:text-gray-800"
               set:html={content.intro.includes('<p>') ? content.intro : `<p>${content.intro}</p>`}
+              data-reveal="up"
             />
 
             <div class="mt-3 flex w-full justify-center" aria-hidden="true">
@@ -256,7 +257,7 @@ const headerImage = service.image_detail ?? service.image;
       <section class="relative z-10 px-4" data-service-tabs>
         <div class="mx-auto max-w-[1200px]">
           {hasTabs && (
-            <div class="flex justify-center">
+            <div class="flex justify-center" data-reveal="up">
               <button
                 type="button"
                 class="inline-flex h-10 cursor-pointer items-center justify-center rounded-t-full px-8 3md:px-10 2xl:px-14 text-sm md:text-[0.95rem] font-semibold transition-colors duration-150 bg-cicaindigo-50 text-cicaindigo-400 hover:bg-cicaindigo-100 aria-selected:bg-cicaindigo-400 aria-selected:text-white aria-selected:hover:bg-cicaindigo-400"
@@ -276,13 +277,13 @@ const headerImage = service.image_detail ?? service.image;
             </div>
           )}
 
-          <div class="bg-cicagray-50 rounded-2xl border-t-2 border-cicaindigo-400 px-6 md:px-10 py-10 md:py-[60px] 3md:py-20">
+          <div class="bg-cicagray-50 rounded-2xl border-t-2 border-cicaindigo-400 px-6 md:px-10 py-10 md:py-[60px] 3md:py-20" data-reveal="up">
             {hasOffers && (
               <div data-tab-panel="offers" hidden={hasTabs ? false : undefined}>
                 {hasTabs === false && <h2 class="text-cicaindigo-500 mb-4 text-xl font-bold">¿Qué ofrecemos?</h2>}
                 <ul class="flex flex-col gap-3.5 sm:gap-3">
-                  {content.offers!.map((offer) => (
-                    <li class="flex items-start gap-2.5 sm:gap-2">
+                  {content.offers!.map((offer, index) => (
+                    <li class="flex items-start gap-2.5 sm:gap-2" data-reveal="up" style={`--reveal-delay: ${Math.min(index, 6) * 60}ms`}>
                       <Icon name="ph:check-circle-fill" class="text-cicagold-500 mt-0.5 size-5 shrink-0" aria-hidden="true" />
                       <p class="text-sm md:text-base leading-relaxed">
                         <strong class="text-cicaindigo-500 font-semibold">{offer.highlight}</strong>{' '}
@@ -298,8 +299,13 @@ const headerImage = service.image_detail ?? service.image;
               <div data-tab-panel="coverages" hidden={hasTabs}>
                 {hasTabs === false && <h2 class="text-cicaindigo-500 mb-4 text-xl font-bold">Coberturas</h2>}
                 <div class="flex flex-col gap-2.5">
-                  {content.coverages!.map((coverage) => (
-                    <details name="coverage-accordion" class="group overflow-hidden rounded-xl bg-cicaindigo-50 shadow-sm transition-colors duration-150">
+                  {content.coverages!.map((coverage, index) => (
+                    <details
+                      name="coverage-accordion"
+                      class="group overflow-hidden rounded-xl bg-cicaindigo-50 shadow-sm transition-colors duration-150"
+                      data-reveal="up"
+                      style={`--reveal-delay: ${Math.min(index, 6) * 60}ms`}
+                    >
                       <summary class="flex cursor-pointer list-none select-none items-center gap-3 px-4 py-3.5 font-medium transition-colors duration-150 bg-cicaindigo-50 hover:bg-cicaindigo-100 group-open:bg-cicaindigo-200 group-open:hover:bg-cicaindigo-200 [&::-webkit-details-marker]:hidden">
                         <Icon
                           name="ph:check-circle-fill"
@@ -363,7 +369,7 @@ const headerImage = service.image_detail ?? service.image;
   <div class="mx-auto max-w-[1024px] px-4 pt-12 md:pt-16 pb-16 md:pb-20">
     {
       content.why_choose_us?.text && (
-        <section class="mx-auto w-full max-w-[1024px] rounded-2xl bg-cicaindigo-100 px-6 py-8 sm:px-10 md:py-10 text-center">
+        <section class="mx-auto w-full max-w-[1024px] rounded-2xl bg-cicaindigo-100 px-6 py-8 sm:px-10 md:py-10 text-center" data-reveal="up">
           <h2 class="text-xl sm:text-2xl md:text-3xl font-bold text-cicaindigo-500 mb-3 md:mb-4">
             {content.why_choose_us.title ?? '¿Por qué elegirnos?'}
           </h2>
@@ -377,7 +383,7 @@ const headerImage = service.image_detail ?? service.image;
 
     {
       (content.tip?.text || content.tip?.title) && (
-        <section class="mx-auto mt-12 md:mt-16 flex flex-col items-center text-center max-w-[1024px] w-full">
+        <section class="mx-auto mt-12 md:mt-16 flex flex-col items-center text-center max-w-[1024px] w-full" data-reveal="up">
           <div class="flex items-center justify-center gap-2.5 sm:gap-3">
             <svg
               width="29"

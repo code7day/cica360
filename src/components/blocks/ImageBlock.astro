@@ -14,10 +14,15 @@
  * campos: caption real (`content.caption`, ya no `block.title`), relación
  * de aspecto, alineación, fondo sólido/degradado (mismo
  * `resolveBackgroundStyle()` que el resto de bloques con fondo) y padding
- * vertical en 4 pasos. `properties.animation` queda sin consumir a
- * propósito — es un campo muerto en TODO el proyecto (ningún bloque lo
- * renderiza todavía), no una omisión puntual de este bloque; fuera de
- * alcance de este pase.
+ * vertical en 4 pasos.
+ *
+ * 2026-09-17: `properties.animation` (mencionado en versiones previas de
+ * este comentario como "campo muerto") fue removido por completo de
+ * Filament — ver ADR en genesis/docs/context/DECISIONS.md. La animación de
+ * entrada al hacer scroll ahora es un mecanismo estático sitewide
+ * (`data-reveal`, ver `global.css`/`BaseLayout.astro`), no configurable por
+ * property. Este bloque no lo consume porque es una imagen suelta simple
+ * sin necesidad de un efecto de entrada propio.
  */
 import type { Block, Media } from '../../lib/types';
 import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
@@ -69,7 +74,7 @@ const alignClass = ALIGN_CLASSES[content.align ?? 'center'];
 {
   content.media?.url && (
     <section class="w-full" style={sectionStyle || undefined}>
-      <figure class={`max-w-4xl px-4 ${paddingYClass} ${alignClass}`}>
+      <figure class={`max-w-4xl px-4 ${paddingYClass} ${alignClass}`} data-reveal="fade">
         <img
           src={content.media.url}
           alt={content.media.alt_text ?? ''}

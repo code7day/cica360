@@ -28,18 +28,28 @@ const post = await getPost(slug);
 >
   <article class="mx-auto max-w-3xl px-4 py-16">
     {post.featured_image?.url && (
-      <img src={post.featured_image.url} alt={post.featured_image.alt_text ?? ''} width="1200" height="630" class="mb-8 w-full rounded" />
+      <img src={post.featured_image.url} alt={post.featured_image.alt_text ?? ''} width="1200" height="630" class="mb-8 w-full rounded" data-reveal="fade" />
     )}
 
-    {post.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{post.pretitle}</p>}
-    <h1 class="text-4xl font-bold">{post.title}</h1>
-    {post.subtitle && <p class="mt-2 text-lg text-gray-600">{post.subtitle}</p>}
+    {post.pretitle && (
+      <p class="mb-2 text-sm uppercase tracking-wide text-gray-500" data-reveal="up">
+        {post.pretitle}
+      </p>
+    )}
+    <h1 class="text-4xl font-bold" data-reveal="up" style="--reveal-delay: 90ms">
+      {post.title}
+    </h1>
+    {post.subtitle && (
+      <p class="mt-2 text-lg text-gray-600" data-reveal="up" style="--reveal-delay: 180ms">
+        {post.subtitle}
+      </p>
+    )}
     {post.published_at && (
       <time datetime={post.published_at} class="mt-4 block text-sm text-gray-400">
         {new Date(post.published_at).toLocaleDateString('es', { year: 'numeric', month: 'long', day: 'numeric' })}
       </time>
     )}
 
-    <div class="prose mt-8 max-w-none" set:html={post.content ?? ''} />
+    <div class="prose mt-8 max-w-none" set:html={post.content ?? ''} data-reveal="up" />
   </article>
 </BaseLayout>

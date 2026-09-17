@@ -358,5 +358,45 @@ const effectiveOgDescription = ogDescription ?? description ?? null;
     <main class="flex-1">
       <slot />
     </main>
+
+    <script>
+      /**
+       * Motor de "reveal on scroll" — ver el comentario largo en
+       * `global.css` (`[data-reveal]`) para el contexto completo de esta
+       * decisión (2026-09-17, reemplaza la property `animation` de
+       * Filament, eliminada por quedar como campo fantasma). Acá solo vive
+       * el CUÁNDO: la primera vez que un elemento `[data-reveal]` entra al
+       * viewport, se le agrega `.is-revealed` y se deja de observar (no
+       * revierte al scrollear hacia arriba — una sola entrada por
+       * elemento, comportamiento estándar de "reveal on scroll"). Corre en
+       * TODAS las páginas (vive en `BaseLayout.astro`, no por bloque) —
+       * cualquier página nueva que use `data-reveal` en su markup queda
+       * cubierta sin tocar este script.
+       */
+      const revealTargets = document.querySelectorAll<HTMLElement>('[data-reveal]');
+
+      if (revealTargets.length > 0) {
+        if ('IntersectionObserver' in window) {
+          const observer = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-revealed');
+                  observer.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.15, rootMargin: '0px 0px -8% 0px' },
+          );
+
+          revealTargets.forEach((el) => observer.observe(el));
+        } else {
+          // Sin soporte de IntersectionObserver (navegador muy viejo):
+          // mostrar todo de una, sin animación — nunca dejar contenido
+          // invisible.
+          revealTargets.forEach((el) => el.classList.add('is-revealed'));
+        }
+      }
+    </script>
   </body>
 </html>

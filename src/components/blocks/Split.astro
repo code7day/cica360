@@ -67,14 +67,6 @@ interface SplitProperties {
    */
   content_width?: 'full' | 'boxed' | 'narrow';
   /**
-   * Registrado en Studio (`PropertiesSchema`) pero SIN consumidor real
-   * todavía en ningún bloque del frontend (tampoco en Hero/RichText) —
-   * requeriría un Intersection Observer para animar al entrar en
-   * viewport. Fuera de alcance de esta implementación; se deja tipado
-   * para no perder la property si se decide conectarla más adelante.
-   */
-  animation?: 'none' | 'fade' | 'slide-up';
-  /**
    * Filtros/efectos de la imagen (`media_*`, 2026-08-31) — mismo set que
    * `slide_background_*` de Hero.astro (blend mode + brillo + opacidad +
    * los 6 filtros CSS clásicos), generalizado sin el prefijo "slide"
@@ -284,7 +276,7 @@ const mediaStyle = mediaEffectStyle(properties);
     <div class={`grid gap-0 md:grid-cols-2 md:gap-0 ${gridAlignClass}`}>
       {
         content.media?.url && (
-          <div class={mediaOnRight ? 'md:order-2' : undefined}>
+          <div class={mediaOnRight ? 'md:order-2' : undefined} data-reveal="fade">
             <Image
               src={content.media.url}
               alt={content.media.alt_text ?? block.title ?? ''}
@@ -305,14 +297,28 @@ const mediaStyle = mediaEffectStyle(properties);
         class={`flex flex-col justify-center gap-4 ${mediaOnRight ? 'md:order-1' : ''} ${textPaddingClass}`}
         style={textBackgroundStyle}
       >
-        {block.pretitle && <p class="text-cicagold-600 text-sm leading-tight font-light tracking-[0.2em] uppercase xs:leading-normal">{block.pretitle}</p>}
-        {block.title && <h2 class={`text-cicaindigo-500 ${TITLE_RESPONSIVE_CLASS}`}>{block.title}</h2>}
-        {block.subtitle && <p class={SUBTITLE_RESPONSIVE_CLASS}>{block.subtitle}</p>}
-        {content.body && <div class={`split-body ${BODY_RESPONSIVE_CLASS}`} set:html={content.body} />}
+        {block.pretitle && (
+          <p class="text-cicagold-600 text-sm leading-tight font-light tracking-[0.2em] uppercase xs:leading-normal" data-reveal="up">
+            {block.pretitle}
+          </p>
+        )}
+        {block.title && (
+          <h2 class={`text-cicaindigo-500 ${TITLE_RESPONSIVE_CLASS}`} data-reveal="up" style="--reveal-delay: 90ms">
+            {block.title}
+          </h2>
+        )}
+        {block.subtitle && (
+          <p class={SUBTITLE_RESPONSIVE_CLASS} data-reveal="up" style="--reveal-delay: 180ms">
+            {block.subtitle}
+          </p>
+        )}
+        {content.body && (
+          <div class={`split-body ${BODY_RESPONSIVE_CLASS}`} set:html={content.body} data-reveal="up" style="--reveal-delay: 270ms" />
+        )}
 
         {
           links.length > 0 && (
-            <div class="mt-2 flex flex-wrap gap-3">
+            <div class="mt-2 flex flex-wrap gap-3" data-reveal="up" style="--reveal-delay: 360ms">
               {links.map((link) => (
                 <a
                   href={link.href ?? '#'}

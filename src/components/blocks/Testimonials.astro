@@ -71,13 +71,6 @@ interface TestimonialsProperties extends BackgroundColorProperties {
   item_background_opacity?: number | null;
   text_color?: string | null;
   padding_y?: 'sm' | 'md' | 'lg' | 'xl';
-  /**
-   * Tipada pero sin consumir todavía (2026-08-31) — mismo gap ya
-   * documentado en `Split.astro`/`RichText.astro`: no hay sistema de
-   * animaciones on-scroll implementado en el sitio aún, la property queda
-   * lista del lado de Studio para cuando se agregue.
-   */
-  animation?: 'none' | 'fade' | 'slide-up';
   show_link?: boolean;
   /**
    * 2026-09-11 (pedido del Tech Lead: "todos deberian permitir personalizar
@@ -359,8 +352,12 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
     {
       items.length > 0 && !useCarousel && (
         <div class="grid w-full gap-8 sm:grid-cols-2 sm:px-5 lg:grid-cols-3 lg:px-0">
-          {items.map((item) => (
-            <blockquote class="testimonial-card flex flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 2lg:p-6 xl:p-10" style={cardStyle || undefined}>
+          {items.map((item, index) => (
+            <blockquote
+              class="testimonial-card flex flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors sm:p-10 2lg:p-6 xl:p-10"
+              style={`${cardStyle} --reveal-delay: ${(index % 3) * 90}ms;`}
+              data-reveal="up"
+            >
               {item.avatar?.url ? (
                 <img
                   src={item.avatar.url}
@@ -544,8 +541,9 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
                 }
               <blockquote
                 class={`testimonial-card flex shrink-0 basis-full snap-center flex-col items-center gap-6 rounded-2xl p-8 text-center transition-colors ${index === 1 || index === items.length - 1 ? 'sm:basis-[calc(50%-30px)]' : 'sm:basis-[calc(50%-10px)]'} sm:p-10 lg:basis-[calc(33.333%-1.334rem)] 2lg:p-6 xl:p-10 ${index === 0 ? 'ml-5' : ''}`}
-                style={cardStyle || undefined}
+                style={`${cardStyle} --reveal-delay: ${(index % 3) * 90}ms;`}
                 data-testimonials-item
+                data-reveal="up"
               >
                 {item.avatar?.url ? (
                   <img
@@ -591,6 +589,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
           target={link.target}
           rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
           class="hover:border-cicagold-500 hover:text-cicagold-500 mt-4 inline-flex h-12 items-center justify-center gap-2 rounded-lg border border-current px-8 text-sm font-bold tracking-[0.1em] uppercase transition sm:mx-5 lg:mx-0"
+          data-reveal="up"
         >
           <Icon name="ph:eye" size={18} aria-hidden="true" />
           {link.label}

@@ -93,11 +93,15 @@ const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
   {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
 
   <div class={`relative z-10 mx-auto max-w-3xl px-4 ${paddingYClass}`}>
-    {block.title && <h2 class="mb-6 text-3xl font-bold">{block.title}</h2>}
+    {block.title && (
+      <h2 class="mb-6 text-3xl font-bold" data-reveal="up">
+        {block.title}
+      </h2>
+    )}
     <div class="divide-y divide-gray-200">
       {
-        items.map((item) => (
-          <details class="py-4">
+        items.map((item, index) => (
+          <details class="py-4" data-reveal="up" style={`--reveal-delay: ${Math.min(index, 5) * 60}ms`}>
             <summary class="cursor-pointer font-medium">{item.question}</summary>
             <p class="mt-2 text-gray-600">{item.answer}</p>
           </details>

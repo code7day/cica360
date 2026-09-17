@@ -7,12 +7,12 @@ const { data: posts } = await getPosts({ per_page: 50 });
 
 <BaseLayout title="Blog" description="Novedades y artículos de CICA360.">
   <section class="mx-auto max-w-4xl px-4 py-16">
-    <h1 class="mb-8 text-3xl font-bold">Blog</h1>
+    <h1 class="mb-8 text-3xl font-bold" data-reveal="up">Blog</h1>
 
     <ul class="flex flex-col gap-8">
       {
-        posts.map((post) => (
-          <li>
+        posts.map((post, index) => (
+          <li data-reveal="up" style={`--reveal-delay: ${Math.min(index, 6) * 60}ms`}>
             <a href={`/blog/${post.slug}`} class="block">
               <h2 class="text-xl font-semibold hover:underline">{post.title}</h2>
               {post.excerpt && <p class="mt-1 text-gray-600">{post.excerpt}</p>}

@@ -67,8 +67,6 @@ const items = content.items ?? [];
 interface TestimonialsGridProperties extends BackgroundColorProperties {
   text_color?: string | null;
   padding_y?: 'sm' | 'md' | 'lg' | 'xl';
-  /** Declarada en `PropertiesSchema` (genesis), sin consumidor real acá — mismo caso que `animation` en `ServicesGrid.astro`/`Features.astro`. */
-  animation?: 'none' | 'fade' | 'slide-up' | null;
   show_link?: boolean;
   /** 2026-09-11 — imagen de fondo de la sección, mismo patrón que `ServicesGrid.astro`/`Features.astro`. */
   media_blend_mode?: 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | null;
@@ -203,7 +201,8 @@ function shortName(name?: string): string {
           <blockquote
             class="flex w-full flex-col items-center gap-6 rounded-2xl bg-white p-8 text-center shadow-lg sm:w-[calc(50%-12px)] sm:p-10 lg:w-[calc(33.333%-16px)]"
             data-testimonials-item
-            style={index >= INITIAL_VISIBLE ? 'display: none;' : undefined}
+            data-reveal="up"
+            style={`--reveal-delay: ${(index % 3) * 90}ms;${index >= INITIAL_VISIBLE ? ' display: none;' : ''}`}
           >
             {item.avatar?.url ? (
               <img
@@ -231,7 +230,7 @@ function shortName(name?: string): string {
 
     {
       showLoadMore && (
-        <div class="flex w-full justify-center">
+        <div class="flex w-full justify-center" data-reveal="up">
           {
             /* Hover: 2026-09-11 (mismo pedido/criterio que `ServicesGrid.astro`,
             ver ese archivo) — border+texto a `cicagold-600`, fondo transparente. */
@@ -251,7 +250,7 @@ function shortName(name?: string): string {
 
     {
       showLink && link && (
-        <div class="flex w-full justify-center">
+        <div class="flex w-full justify-center" data-reveal="up">
           <a
             href={link.href ?? '#'}
             target={link.target}

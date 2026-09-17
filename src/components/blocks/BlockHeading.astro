@@ -54,20 +54,40 @@ const { pretitle, title, subtitle, wrapperClass, pretitleColorClass = '', titleC
 ---
 
 {
+  /*
+    2026-09-17: cluster pretitle→título→subtítulo revelado en cascada
+    (`data-reveal="up"` + `--reveal-delay` creciente, 90ms por paso) — al
+    ser un partial compartido por 4 bloques (RichText/Testimonials/Logos/
+    Features), este único wiring cubre los 4 de una — ver el motor en
+    `global.css`/`BaseLayout.astro`.
+  */
+}
+{
   (pretitle || title || subtitle) && (
     <div class={wrapperClass}>
       {pretitle && (
-        <p class={`w-full text-sm leading-tight font-light tracking-[0.2em] uppercase xs:leading-normal ${pretitleColorClass}`.trim()}>
+        <p
+          class={`w-full text-sm leading-tight font-light tracking-[0.2em] uppercase xs:leading-normal ${pretitleColorClass}`.trim()}
+          data-reveal="up"
+        >
           {pretitle}
         </p>
       )}
       {title && (
-        <h2 class={`w-full text-2xl leading-tight font-bold sm:text-3xl 4md:text-4xl xs:leading-normal ${titleColorClass}`.trim()}>
+        <h2
+          class={`w-full text-2xl leading-tight font-bold sm:text-3xl 4md:text-4xl xs:leading-normal ${titleColorClass}`.trim()}
+          data-reveal="up"
+          style="--reveal-delay: 90ms"
+        >
           {title}
         </h2>
       )}
       {subtitle && (
-        <p class={`w-full text-lg leading-snug font-light md:text-base xs:leading-normal ${subtitleColorClass}`.trim()}>
+        <p
+          class={`w-full text-lg leading-snug font-light md:text-base xs:leading-normal ${subtitleColorClass}`.trim()}
+          data-reveal="up"
+          style="--reveal-delay: 180ms"
+        >
           {subtitle}
         </p>
       )}

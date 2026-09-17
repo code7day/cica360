@@ -94,7 +94,11 @@ const contentWidthClass = CONTENT_WIDTH_CLASSES[properties.content_width ?? 'box
   {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
 
   <div class={`relative z-10 mx-auto text-sm text-gray-600 ${contentWidthClass} ${paddingYClass}`}>
-    {block.title && <h2 class="mb-4 text-lg font-semibold">{block.title}</h2>}
-    <div class="prose prose-sm max-w-none" set:html={html} />
+    {block.title && (
+      <h2 class="mb-4 text-lg font-semibold" data-reveal="up">
+        {block.title}
+      </h2>
+    )}
+    <div class="prose prose-sm max-w-none" set:html={html} data-reveal="up" style="--reveal-delay: 90ms" />
   </div>
 </section>

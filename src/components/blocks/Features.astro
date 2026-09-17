@@ -49,14 +49,6 @@ interface FeaturesProperties extends BackgroundColorProperties {
   text_color?: string | null;
   content_width?: 'full' | 'boxed' | 'narrow';
   padding_y?: 'sm' | 'md' | 'lg' | 'xl';
-  /**
-   * Declarada en `PropertiesSchema` (genesis) desde el bloque original,
-   * pero SIN consumidor real en este componente ni antes ni ahora — se
-   * documenta acá para que quede explícito que no es un olvido de este
-   * rediseño, sino deuda preexistente (agregar animación de entrada por
-   * scroll queda fuera del alcance de este cambio puntual).
-   */
-  animation?: 'none' | 'fade' | 'slide-up' | null;
   /** Estilo de cada tarjeta del grid — ver `FeatureCardStyleEnum` (genesis). */
   feature_style?: 'simple' | 'shapes' | 'boxed_no_shadow' | 'boxed_shadow' | null;
   /** Solo tiene efecto visual con `feature_style: boxed_no_shadow`/`boxed_shadow` — ver abajo. */

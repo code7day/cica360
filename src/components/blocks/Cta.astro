@@ -202,8 +202,16 @@ const linkSize = LINK_SIZE_CLASSES[properties.link_size ?? 'lg'];
       Lead (2026-09-01) para un tamaño de fuente arbitrario (22px); es un
       caso aparte, fuera del patrón compartido del resto de los blocks. */
     }
-    {block.pretitle && <p class="w-full text-sm leading-tight font-light tracking-[0.2em] uppercase opacity-80 xs:leading-normal">{block.pretitle}</p>}
-    {block.title && <h2 class="4md:text-4xl w-full text-2xl font-bold italic leading-tight sm:text-3xl xs:leading-normal">{block.title}</h2>}
+    {block.pretitle && (
+      <p class="w-full text-sm leading-tight font-light tracking-[0.2em] uppercase opacity-80 xs:leading-normal" data-reveal="up">
+        {block.pretitle}
+      </p>
+    )}
+    {block.title && (
+      <h2 class="4md:text-4xl w-full text-2xl font-bold italic leading-tight sm:text-3xl xs:leading-normal" data-reveal="up" style="--reveal-delay: 90ms">
+        {block.title}
+      </h2>
+    )}
     {
       /* No es un "subtítulo": es la descripción breve del CTA (1 línea bajo
       el título). Bajado de 24px a 22px (2026-09-01, ajuste del Tech Lead:
@@ -214,7 +222,11 @@ const linkSize = LINK_SIZE_CLASSES[properties.link_size ?? 'lg'];
       "Descripción breve" (ver HeadingFieldset::make() en el bloque `cta`
       de PageResource.php). */
     }
-    {block.subtitle && <p class="w-full text-lg leading-8 font-light opacity-90 lg:text-xl">{block.subtitle}</p>}
+    {block.subtitle && (
+      <p class="w-full text-lg leading-8 font-light opacity-90 lg:text-xl" data-reveal="up" style="--reveal-delay: 180ms">
+        {block.subtitle}
+      </p>
+    )}
 
     {
       showLink && link && (
@@ -223,6 +235,8 @@ const linkSize = LINK_SIZE_CLASSES[properties.link_size ?? 'lg'];
           target={link.target}
           rel={link.target === '_blank' ? 'noopener noreferrer' : undefined}
           class={`mt-4 inline-flex items-center justify-center border font-bold tracking-[0.1em] uppercase shadow-lg transition ${linkSize.button} ${linkRadiusClass} ${linkStyleClass}`}
+          data-reveal="up"
+          style="--reveal-delay: 270ms"
         >
           {link.label}
           <Icon name="ph:paper-plane-tilt" size={linkSize.icon} aria-hidden="true" />
