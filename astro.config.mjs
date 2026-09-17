@@ -27,6 +27,18 @@ export default defineConfig({
   site: process.env.PUBLIC_SITE_URL || 'https://cica360.example',
   trailingSlash: 'never',
 
+  image: {
+    domains: ['media.stamless.com', 'genesis.cica360.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+      },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      },
+    ],
+  },
   integrations: [react(), sitemap(), icon()],
   vite: {
     plugins: [tailwindcss()],
@@ -39,5 +51,6 @@ export default defineConfig({
     // no tiene forma de invalidar CDN por sí mismo, así que el propio
     // nombre de archivo es el mecanismo de cache-busting.
     assets: '_assets',
+    inlineStylesheets: 'always',
   },
 });

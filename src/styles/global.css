@@ -277,4 +277,9 @@
   a img {
     pointer-events: none;
   }
+
+  img {
+    height: auto;
+    max-width: 100%;
+  }
 }

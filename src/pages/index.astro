@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import BlockRenderer from '../components/blocks/BlockRenderer.astro';
-import { getPages, getPage } from '../lib/api';
+import { getPages, getPage, getSlider } from '../lib/api';
 
 // La home se resuelve por `is_home = true` (no por slug fijo "home") para
 // no asumir cuál page está marcada como home en Filament — es exactamente
@@ -19,6 +19,20 @@ if (!homeSummary) {
 }
 
 const page = await getPage(homeSummary.slug);
+
+// Preload de la imagen principal del Hero (LCP) para acelerar el primer render
+let preloadImage: string | null = null;
+const heroBlock = page.blocks.find((b) => b.type === 'hero');
+if (heroBlock) {
+  const heroContent = heroBlock.content as { mode?: string; slider_slug?: string; background_image?: { url: string | null } } | undefined;
+  if (heroContent?.mode === 'slider' && heroContent?.slider_slug) {
+    const slider = await getSlider(heroContent.slider_slug).catch(() => null);
+    const firstSlide = slider?.slides?.[0];
+    preloadImage = firstSlide?.media?.image_desktop?.url ?? firstSlide?.media?.image_mobile?.url ?? null;
+  } else if (heroContent?.background_image?.url) {
+    preloadImage = heroContent.background_image.url;
+  }
+}
 ---
 
 <BaseLayout
@@ -29,6 +43,7 @@ const page = await getPage(homeSummary.slug);
   ogTitle={page.meta?.og_title}
   ogDescription={page.meta?.og_description}
   ogImage={page.meta?.og_image_rect ?? page.meta?.og_image_square}
+  preloadImage={preloadImage}
 >
   {page.blocks.map((block) => <BlockRenderer block={block} />)}
 </BaseLayout>

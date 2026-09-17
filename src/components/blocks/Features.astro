@@ -303,7 +303,7 @@ const cardClass = CARD_CLASSES[featureStyle];
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }
@@ -571,6 +571,8 @@ const cardClass = CARD_CLASSES[featureStyle];
                   <img
                     src={item.image.url}
                     alt={item.image.alt_text ?? item.title ?? ''}
+                    width="800"
+                    height="600"
                     class="h-full w-full object-cover"
                     loading="lazy"
                     draggable="false"

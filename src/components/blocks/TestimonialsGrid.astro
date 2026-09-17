@@ -170,7 +170,7 @@ function shortName(name?: string): string {
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }
@@ -209,6 +209,8 @@ function shortName(name?: string): string {
               <img
                 src={item.avatar.url}
                 alt={item.avatar.alt_text ?? item.name ?? ''}
+                width="112"
+                height="112"
                 class="h-24 w-24 rounded-full object-cover sm:h-28 sm:w-28"
                 loading="lazy"
               />

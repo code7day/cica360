@@ -86,7 +86,7 @@ const paddingYClass = PADDING_Y_CLASSES[properties.padding_y ?? 'lg'];
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }

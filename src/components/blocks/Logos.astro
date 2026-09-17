@@ -215,7 +215,7 @@ const LOGO_ITEM_WIDTH_CLASS =
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }
@@ -270,8 +270,11 @@ const LOGO_ITEM_WIDTH_CLASS =
                 <img
                   src={item.media!.url!}
                   alt={item.media?.alt_text ?? ''}
-                  class="h-[120px] w-auto object-contain sm:h-[144px]"
+                  width="240"
+                  height="144"
+                  class="h-[120px] w-auto aspect-[240/144] object-contain sm:h-[144px]"
                   loading="lazy"
+                  decoding="async"
                 />
               </a>
             ))}
@@ -286,7 +289,7 @@ const LOGO_ITEM_WIDTH_CLASS =
           }
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 left-0 z-10 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            class="text-cicagold-500 absolute top-1/2 left-0 z-10 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2 touch-manipulation"
             data-logos-prev
             aria-label="Logo anterior"
           >
@@ -294,7 +297,7 @@ const LOGO_ITEM_WIDTH_CLASS =
           </button>
           <button
             type="button"
-            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-10 w-10 translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2"
+            class="text-cicagold-500 absolute top-1/2 right-0 z-10 flex h-11 w-11 translate-x-1/2 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white shadow-md transition hover:bg-white/80 focus-visible:outline focus-visible:outline-2 touch-manipulation"
             data-logos-next
             aria-label="Logo siguiente"
           >
@@ -320,7 +323,7 @@ const LOGO_ITEM_WIDTH_CLASS =
              * clonados del principio — ver script, "REMOVIDO").
              */
           }
-          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Logos" data-logos-dots />
+          <div class="mt-6 flex w-full items-center justify-center" role="tablist" aria-label="Logos" data-logos-dots />
         </div>
       )
     }
@@ -559,11 +562,18 @@ const LOGO_ITEM_WIDTH_CLASS =
           const dot = document.createElement('button');
           dot.type = 'button';
           dot.className =
-            'data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-black/20 transition-all data-[active=true]:w-6';
+            'group relative flex h-9 w-9 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation';
           dot.dataset.index = String(page);
           dot.setAttribute('role', 'tab');
           dot.setAttribute('aria-label', `Ir a la página ${page + 1} de logos`);
           dot.setAttribute('aria-selected', page === 0 ? 'true' : 'false');
+          dot.dataset.active = page === 0 ? 'true' : 'false';
+
+          const innerDot = document.createElement('span');
+          innerDot.className =
+            'group-data-[active=true]:bg-cicagold-500 h-2 w-2 rounded-full bg-black/20 transition-all group-data-[active=true]:w-6 pointer-events-none block';
+          dot.appendChild(innerDot);
+
           dot.addEventListener('click', () => {
             scrollToIndex(page);
             pauseThenResume();

@@ -22,6 +22,7 @@
  */
 import type { Block, ContentLink } from '../../lib/types';
 import { Icon } from 'astro-icon/components';
+import { Image } from 'astro:assets';
 
 interface Props {
   block: Block;
@@ -284,12 +285,17 @@ const mediaStyle = mediaEffectStyle(properties);
       {
         content.media?.url && (
           <div class={mediaOnRight ? 'md:order-2' : undefined}>
-            <img
+            <Image
               src={content.media.url}
               alt={content.media.alt_text ?? block.title ?? ''}
+              width={720}
+              height={720}
+              widths={[412, 720]}
+              sizes="(max-width: 768px) 100vw, 50vw"
               class={`h-full w-full object-cover ${mediaRadiusClass}`}
               style={mediaStyle}
               loading="lazy"
+              decoding="async"
             />
           </div>
         )

@@ -137,6 +137,11 @@ elif [ -f ".env" ]; then
     cp .env "${DIST_DIR}/.env"
 fi
 
+if [ -f "public/.htaccess" ]; then
+    echo -e "${COLOR_INFO}📄 Copiando .htaccess a ${DIST_DIR}/.htaccess...${COLOR_RESET}"
+    cp public/.htaccess "${DIST_DIR}/.htaccess"
+fi
+
 TOTAL_FILES=$(find "$DIST_DIR" -type f | wc -l | tr -d ' ')
 echo -e "\n${COLOR_SUCCESS}✅ Directorio dist listo:${COLOR_RESET} ${DIST_DIR} (${TOTAL_FILES} archivos)"
 

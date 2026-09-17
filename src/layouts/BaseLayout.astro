@@ -144,9 +144,10 @@ export interface Props {
   ogTitle?: string | null;
   ogDescription?: string | null;
   ogImage?: Media | null;
+  preloadImage?: string | null;
 }
 
-const { title, description, seoTitle, keywords, ogTitle, ogDescription, ogImage } = Astro.props;
+const { title, description, seoTitle, keywords, ogTitle, ogDescription, ogImage, preloadImage } = Astro.props;
 
 // Menú principal resuelto una vez por página, en build time — se pasa
 // como prop a Header/Footer en vez de que cada uno haga su propio fetch.
@@ -157,8 +158,11 @@ const menu = await getMenu('menu-principal').catch(() => null);
 // criterio `.catch(() => null)` que `menu` arriba: nunca debe romper el
 // build de una página por esto).
 const tracking = await getSiteTracking().catch(() => null);
-const gtmId = tracking?.gtm_id ?? null;
-const metaPixelId = tracking?.meta_pixel_id ?? null;
+const rawGtmId = typeof tracking?.gtm_id === 'string' ? tracking.gtm_id.trim() : '';
+const rawMetaPixelId = typeof tracking?.meta_pixel_id === 'string' ? tracking.meta_pixel_id.trim() : '';
+const gtmId = rawGtmId.length > 0 ? rawGtmId : null;
+const metaPixelId = rawMetaPixelId.length > 0 ? rawMetaPixelId : null;
+const hasTracking = Boolean(gtmId || metaPixelId);
 
 const siteName = 'CICA360';
 // `seoTitle` (meta.seo_title, con fallback tenant-wide ya resuelto por la
@@ -184,12 +188,27 @@ const effectiveOgDescription = ogDescription ?? description ?? null;
     <meta name="robots" content="index, follow" />
     <meta name="generator" content={Astro.generator} />
 
+    {preloadImage && <link rel="preload" as="image" href={preloadImage} fetchpriority="high" />}
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      rel="stylesheet"
+      rel="preload"
+      as="style"
       href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
     />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&display=swap"
+      />
+    </noscript>
 
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
@@ -224,20 +243,17 @@ const effectiveOgDescription = ogDescription ?? description ?? null;
     {effectiveOgDescription && <meta name="twitter:description" content={effectiveOgDescription} />}
     {ogImage?.url && <meta name="twitter:image" content={ogImage.url} />}
 
-    {(gtmId || metaPixelId) && (
+    {hasTracking && (
       <script define:vars={{ gtmId, metaPixelId }} is:inline>
         (function () {
-          var TRACKING_FALLBACK_DELAY_MS = 5000;
+          var TRACKING_FALLBACK_DELAY_MS = 10000;
           var loaded = false;
-          var ric =
-            window.requestIdleCallback ||
-            function (cb) {
-              return setTimeout(cb, 1);
-            };
-          var cic = window.cancelIdleCallback || clearTimeout;
+          var gtmLoaded = false;
+          var pixelLoaded = false;
 
           function loadGtm() {
-            if (!gtmId) return;
+            if (!gtmId || gtmLoaded) return;
+            gtmLoaded = true;
             (function (w, d, s, l, i) {
               w[l] = w[l] || [];
               w[l].push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
@@ -251,7 +267,8 @@ const effectiveOgDescription = ogDescription ?? description ?? null;
           }
 
           function loadMetaPixel() {
-            if (!metaPixelId) return;
+            if (!metaPixelId || pixelLoaded) return;
+            pixelLoaded = true;
             !(function (f, b, e, v, n, t, s) {
               if (f.fbq) return;
               n = f.fbq = function () {
@@ -268,24 +285,47 @@ const effectiveOgDescription = ogDescription ?? description ?? null;
               s = b.getElementsByTagName(e)[0];
               s.parentNode.insertBefore(t, s);
             })(window, document, 'script', 'https://connect.facebook.net/en_US/fbevents.js');
+            // Desactiva el rastreo automático SmartSetup para evitar lecturas fallidas y bloqueo de CORB
+            window.fbq('set', 'autoConfig', false, metaPixelId);
             window.fbq('init', metaPixelId);
             window.fbq('track', 'PageView');
           }
 
-          function loadAll() {
+          function triggerTracking() {
             if (loaded) return;
             loaded = true;
-            cic(fallbackHandle);
-            loadGtm();
-            loadMetaPixel();
+
+            interactionEvents.forEach(function (eventName) {
+              window.removeEventListener(eventName, triggerTracking, listenerOptions);
+            });
+
+            if (fallbackTimer) {
+              clearTimeout(fallbackTimer);
+              fallbackTimer = null;
+            }
+
+            var executeLoad = function () {
+              if (gtmId) loadGtm();
+              if (metaPixelId) loadMetaPixel();
+            };
+
+            if ('requestIdleCallback' in window) {
+              window.requestIdleCallback(executeLoad);
+            } else {
+              setTimeout(executeLoad, 1);
+            }
           }
 
-          var interactionEvents = ['scroll', 'mousemove', 'touchstart', 'keydown', 'click'];
+          // Solo interacciones directas del usuario (sin mousemove para no forzar descarga en la carga inicial)
+          var interactionEvents = ['scroll', 'click', 'touchstart', 'keydown'];
+          var listenerOptions = { passive: true, once: true };
+
           interactionEvents.forEach(function (eventName) {
-            window.addEventListener(eventName, loadAll, { passive: true, once: true });
+            window.addEventListener(eventName, triggerTracking, listenerOptions);
           });
 
-          var fallbackHandle = ric(loadAll, { timeout: TRACKING_FALLBACK_DELAY_MS });
+          // Respaldo tras 10 segundos de inactividad total
+          var fallbackTimer = setTimeout(triggerTracking, TRACKING_FALLBACK_DELAY_MS);
         })();
       </script>
     )}
@@ -310,6 +350,7 @@ const effectiveOgDescription = ogDescription ?? description ?? null;
           style="display:none"
           src={`https://www.facebook.com/tr?id=${metaPixelId}&ev=PageView&noscript=1`}
           alt=""
+          loading="eager"
         />
       </noscript>
     )}

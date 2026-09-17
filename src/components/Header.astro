@@ -449,11 +449,15 @@ const mobileIconBtnClass =
           <img
             src="/logos/logo-main-gold.svg"
             alt="CICA360"
+            width="107"
+            height="36"
             class="3md:group-data-[scrolled=true]/nav:opacity-0 3md:h-9 relative h-7 w-auto transition-opacity duration-300"
           />
           <img
             src="/logos/logo-main-white.svg"
             alt="CICA360"
+            width="107"
+            height="36"
             class="3md:group-data-[scrolled=true]/nav:opacity-100 3md:h-8 absolute h-6 w-auto opacity-0 transition-opacity duration-300"
           />
         </a>
@@ -510,6 +514,7 @@ const mobileIconBtnClass =
               href={ctaItem.href}
               target={ctaItem.target}
               rel={ctaItem.target === '_blank' ? 'noopener noreferrer' : undefined}
+              aria-label={ctaItem.title || 'Contacto'}
               aria-current={ctaItem.href === currentPath ? 'page' : undefined}
               class={`${ctaBaseClass} ${
                 ctaItem.href === currentPath
@@ -580,7 +585,7 @@ const mobileIconBtnClass =
         aria-label="CICA360 — Inicio"
         class={`relative flex h-9 w-auto shrink-0 items-center justify-center cursor-pointer justify-self-center overflow-hidden transition-all ${shapeDelay} duration-500 ${magneticEase} 3md:w-[200px] 3md:justify-start 3md:px-5 group-data-[scrolled=true]/nav:justify-center 3md:group-data-[scrolled=true]/nav:h-10 3md:group-data-[scrolled=true]/nav:w-[118px]`}
       >
-        <img src="/logos/logo-main-white.svg" alt="CICA360" class="h-8 w-auto" />
+        <img src="/logos/logo-main-white.svg" alt="CICA360" width="107" height="36" class="h-8 w-auto" />
       </a>
       <button type="button" data-mobile-menu-close aria-label="Cerrar menú" class={mobileIconBtnClass}>
         <Icon name="ph:x" class="size-5" />

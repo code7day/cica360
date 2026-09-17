@@ -748,7 +748,7 @@ if (slides.length === 0 && import.meta.env.DEV) {
           */}
           <button
             type="button"
-            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 left-4 z-20 flex h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6"
+            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 left-4 z-20 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:left-6 touch-manipulation"
             data-hero-prev
             aria-label="Slide anterior"
           >
@@ -756,24 +756,26 @@ if (slides.length === 0 && import.meta.env.DEV) {
           </button>
           <button
             type="button"
-            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 right-4 z-20 flex h-10 w-10 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6"
+            class="text-cicagold-500 3md:h-14 3md:w-14 absolute top-1/2 right-4 z-20 flex h-11 w-11 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white sm:right-6 touch-manipulation"
             data-hero-next
             aria-label="Slide siguiente"
           >
             <Icon name="ph:caret-right" class="3md:size-8 size-5" />
           </button>
 
-          <div class="absolute bottom-14 left-6 z-20 flex gap-2 sm:left-8" role="tablist" aria-label="Seleccionar slide">
+          <div class="absolute bottom-14 left-4 z-20 flex items-center sm:left-6" role="tablist" aria-label="Seleccionar slide">
             {slides.map((_, index) => (
               <button
                 type="button"
-                class="data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-white/50 transition-all data-[active=true]:w-6"
+                class="group relative flex h-9 w-9 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation"
                 data-hero-dot
                 data-active={index === 0 ? 'true' : 'false'}
                 role="tab"
                 aria-selected={index === 0 ? 'true' : 'false'}
                 aria-label={`Ir al slide ${index + 1}`}
-              />
+              >
+                <span class="group-data-[active=true]:bg-cicagold-500 h-2 w-2 rounded-full bg-white/50 transition-all group-data-[active=true]:w-6 pointer-events-none block" />
+              </button>
             ))}
           </div>
         </>

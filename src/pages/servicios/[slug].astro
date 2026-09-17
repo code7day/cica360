@@ -142,7 +142,7 @@ const headerImage = service.image_detail ?? service.image;
   ogImage={service.meta?.og_image_rect ?? service.meta?.og_image_square ?? service.image}
 >
   <section class="service-header bg-cicaindigo-900 relative w-full overflow-hidden text-white" style={headerHeightStyle}>
-    {headerImage?.url && <img src={headerImage.url} alt={headerImage.alt_text ?? ''} class="absolute inset-0 h-full w-full object-cover" />}
+    {headerImage?.url && <img src={headerImage.url} alt={headerImage.alt_text ?? ''} width="1920" height="800" class="absolute inset-0 h-full w-full object-cover" />}
 
     {/* Capa de contraste general sutil para toda la imagen */}
     <div class="pointer-events-none absolute inset-0 bg-cicaindigo-950/20" aria-hidden="true"></div>
@@ -198,6 +198,8 @@ const headerImage = service.image_detail ?? service.image;
               <img
                 src={`/flags/flag_${country.iso}.webp`}
                 alt={country.name}
+                width="44"
+                height="44"
                 class="size-9 rounded-full object-cover shadow-md ring-[3px] ring-white md:size-11"
                 loading="lazy"
               />

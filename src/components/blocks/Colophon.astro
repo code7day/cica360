@@ -194,7 +194,7 @@ function isBrandColumn(column: ColophonColumn): boolean {
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }
@@ -212,7 +212,7 @@ function isBrandColumn(column: ColophonColumn): boolean {
           >
             {isBrandColumn(column) ? (
               <>
-                <img src="/logos/logo-main-gray.svg" alt="CICA360" class="h-8 w-auto opacity-80" loading="lazy" />
+                <img src="/logos/logo-main-gray.svg" alt="CICA360" width="107" height="36" class="h-8 w-auto aspect-[107/36] opacity-80" loading="eager" decoding="async" />
                 <p class="max-w-[230px] text-sm italic opacity-80">&ldquo;{column.description}&rdquo;</p>
               </>
             ) : (
@@ -274,7 +274,7 @@ function isBrandColumn(column: ColophonColumn): boolean {
                 if (subBlock.type === 'image_link') {
                   const data = subBlock.data as ColophonImageLinkData;
                   const href = data.links?.[0]?.href;
-                  const img = data.image?.url && <img src={data.image.url} alt={data.image.alt_text ?? ''} class="max-h-16 w-auto object-contain" loading="lazy" />;
+                  const img = data.image?.url && <img src={data.image.url} alt={data.image.alt_text ?? ''} width="180" height="64" class="max-h-16 w-auto aspect-[180/64] object-contain" loading="lazy" decoding="async" />;
 
                   if (!img) return null;
 

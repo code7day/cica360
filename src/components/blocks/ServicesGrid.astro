@@ -48,6 +48,7 @@
 import type { Block, ContentLink, Media, ServiceCountry } from '../../lib/types';
 import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 import { Icon } from 'astro-icon/components';
+import { Image } from 'astro:assets';
 import BlockHeading from './BlockHeading.astro';
 
 /**
@@ -244,7 +245,7 @@ const CARD_WAVE_PATH =
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }
@@ -279,7 +280,7 @@ const CARD_WAVE_PATH =
               data-services-filter={country.iso}
               aria-pressed="false"
             >
-              <img src={`/flags/flag_${country.iso}.webp`} alt="" class="h-7 w-7 rounded-full object-cover sm:h-5 sm:w-5" loading="lazy" />
+              <img src={`/flags/flag_${country.iso}.webp`} alt="" width="28" height="28" class="h-7 w-7 rounded-full object-cover sm:h-5 sm:w-5" loading="lazy" />
               {/* En mobile solo el ícono (2026-09-11, "en mobile ocultar labels y dejar los iconos") — "Todos" queda siempre con texto, no tiene ícono propio que lo reemplace. */}
               <span class="hidden sm:inline">{country.name}</span>
             </button>
@@ -291,7 +292,7 @@ const CARD_WAVE_PATH =
               data-services-filter="general"
               aria-pressed="false"
             >
-              <img src="/flags/flag_GENERAL.webp" alt="" class="h-7 w-7 rounded-full object-cover sm:h-5 sm:w-5" loading="lazy" />
+              <img src="/flags/flag_GENERAL.webp" alt="" width="28" height="28" class="h-7 w-7 rounded-full object-cover sm:h-5 sm:w-5" loading="lazy" />
               <span class="hidden sm:inline">Regional</span>
             </button>
           )}
@@ -330,11 +331,17 @@ const CARD_WAVE_PATH =
             <div class="relative h-48 w-full bg-gray-100">
               <div class="relative z-[5] h-48 w-full overflow-hidden bg-gray-100">
                 {item.image?.url ? (
-                  <img
+                  <Image
                     src={item.image.url}
                     alt={item.image.alt_text ?? item.title ?? ''}
+                    width={400}
+                    height={192}
+                    widths={[380, 400]}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 380px"
                     class="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                    loading="lazy"
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    fetchpriority={index === 0 ? 'high' : undefined}
+                    decoding={index === 0 ? 'sync' : 'async'}
                   />
                 ) : (
                   <div class="bg-cicagold-500/10 text-cicaindigo-500 flex h-full w-full items-center justify-center text-3xl font-bold">
@@ -381,12 +388,14 @@ const CARD_WAVE_PATH =
                       <img
                         src={`/flags/flag_${country.iso}.webp`}
                         alt={country.name}
+                        width="28"
+                        height="28"
                         class="h-7 w-7 rounded-full object-cover shadow-md ring-[3px] ring-white"
                         loading="lazy"
                       />
                     ))
                   ) : (
-                    <img src="/flags/flag_GENERAL.webp" alt="Regional / Global" class="h-7 w-7 rounded-full object-cover shadow-md ring-[3px] ring-white" loading="lazy" />
+                    <img src="/flags/flag_GENERAL.webp" alt="Regional / Global" width="28" height="28" class="h-7 w-7 rounded-full object-cover shadow-md ring-[3px] ring-white" loading="lazy" />
                   )
                 }
               </div>

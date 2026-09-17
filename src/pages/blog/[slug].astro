@@ -28,7 +28,7 @@ const post = await getPost(slug);
 >
   <article class="mx-auto max-w-3xl px-4 py-16">
     {post.featured_image?.url && (
-      <img src={post.featured_image.url} alt={post.featured_image.alt_text ?? ''} class="mb-8 w-full rounded" />
+      <img src={post.featured_image.url} alt={post.featured_image.alt_text ?? ''} width="1200" height="630" class="mb-8 w-full rounded" />
     )}
 
     {post.pretitle && <p class="mb-2 text-sm uppercase tracking-wide text-gray-500">{post.pretitle}</p>}

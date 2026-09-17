@@ -305,7 +305,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
   {
     content.background_image?.url && (
       <div class="pointer-events-none absolute inset-0" style={backgroundImageStyle}>
-        <img src={content.background_image.url} alt="" class="h-full w-full object-cover" loading="lazy" />
+        <img src={content.background_image.url} alt="" width="1920" height="1080" class="h-full w-full object-cover" loading="lazy" />
       </div>
     )
   }
@@ -365,6 +365,8 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
                 <img
                   src={item.avatar.url}
                   alt={item.avatar.alt_text ?? item.name ?? ''}
+                  width="112"
+                  height="112"
                   class="h-24 w-24 rounded-full object-cover sm:h-28 sm:w-28 2lg:h-20 2lg:w-20 xl:h-28 xl:w-28"
                   loading="lazy"
                 />
@@ -549,6 +551,8 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
                   <img
                     src={item.avatar.url}
                     alt={item.avatar.alt_text ?? item.name ?? ''}
+                    width="112"
+                    height="112"
                     class="h-24 w-24 rounded-full object-cover sm:h-28 sm:w-28 2lg:h-20 2lg:w-20 xl:h-28 xl:w-28"
                     loading="lazy"
                   />
@@ -567,7 +571,7 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
             ))}
           </div>
 
-          <div class="mt-6 flex w-full items-center justify-center gap-2" role="tablist" aria-label="Casos de éxito" data-testimonials-dots />
+          <div class="mt-6 flex w-full items-center justify-center" role="tablist" aria-label="Casos de éxito" data-testimonials-dots />
         </div>
       )
     }
@@ -869,11 +873,18 @@ const useCarousel = items.length > MAX_GRID_ITEMS;
           const dot = document.createElement('button');
           dot.type = 'button';
           dot.className =
-            'data-[active=true]:bg-cicagold-500 h-2 w-2 cursor-pointer rounded-full bg-white/50 transition-all data-[active=true]:w-6';
+            'group relative flex h-9 w-9 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation';
           dot.dataset.index = String(page);
           dot.setAttribute('role', 'tab');
           dot.setAttribute('aria-label', `Ir a la página ${page + 1} de casos de éxito`);
           dot.setAttribute('aria-selected', page === 0 ? 'true' : 'false');
+          dot.dataset.active = page === 0 ? 'true' : 'false';
+
+          const innerDot = document.createElement('span');
+          innerDot.className =
+            'group-data-[active=true]:bg-cicagold-500 h-2 w-2 rounded-full bg-white/50 transition-all group-data-[active=true]:w-6 pointer-events-none block';
+          dot.appendChild(innerDot);
+
           dot.addEventListener('click', () => {
             scrollToIndex(page);
             pauseThenResume();
