@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type React from 'react';
 import { detectVisitorCountry, submitContactForm } from '../../lib/api';
+import type { ThankYouTemplate } from '../../lib/types';
 
 /**
  * Única isla de cliente real de este proyecto (junto con, eventualmente,
@@ -508,6 +509,8 @@ export default function ContactForm() {
   // Honeypot: campo real para bots, oculto visualmente (no display:none —
   // algunos bots lo detectan; se usa posicionamiento fuera de pantalla).
   const [honeypot, setHoneypot] = useState('');
+  const [submittedName, setSubmittedName] = useState('');
+  const [thankYouData, setThankYouData] = useState<ThankYouTemplate | null>(null);
 
   const formId = useId();
 
@@ -663,6 +666,10 @@ export default function ContactForm() {
     const result = await submitContactForm(form);
 
     if (result.success) {
+      setSubmittedName(form.name.trim());
+      if (result.data.thank_you) {
+        setThankYouData(result.data.thank_you);
+      }
       setStatus('success');
       setForm(initialForm);
       setPhoneDigits('');
@@ -675,9 +682,74 @@ export default function ContactForm() {
   }
 
   if (status === 'success') {
+    const firstName = submittedName.split(' ')[0];
+    const effectiveTitle = thankYouData?.title ?? (firstName ? `¡Muchas gracias, ${firstName}!` : '¡Muchas gracias por contactarnos!');
+    const effectiveAlertTitle = thankYouData?.alert_title ?? 'Tiempo de respuesta estimado:';
+    const effectiveAlertDescription = thankYouData?.alert_description ?? 'Menos de 24 horas hábiles (Lunes a Viernes de 9:00 a 18:00).';
+    const effectiveButtonLabel = thankYouData?.button_label ?? 'Enviar otra consulta';
+
     return (
-      <div role="status" className="border-cicagreen-200 bg-cicagreen-50 text-cicagreen-800 rounded-lg border p-4 text-sm">
-        Gracias por escribirnos. Te vamos a contactar a la brevedad.
+      <div
+        role="status"
+        className="flex flex-col items-center justify-center rounded-2xl border border-cicagreen-200/80 bg-gradient-to-b from-cicagreen-50/70 via-white to-white p-8 sm:p-12 text-center shadow-lg transition-all"
+      >
+        {/* Badge circular con icono de verificación */}
+        <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-cicagreen-100 text-cicagreen-600 ring-8 ring-cicagreen-50/90 shadow-sm">
+          <svg className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+
+        {/* Título de agradecimiento */}
+        <h3 className="text-2xl sm:text-3xl font-bold text-cicaindigo-900 tracking-tight">
+          {effectiveTitle}
+        </h3>
+
+        {/* Mensaje principal (HTML sanitizado con <strong>) */}
+        {thankYouData?.description ? (
+          <div
+            className="mt-2.5 max-w-md text-sm sm:text-base text-gray-600 leading-relaxed [&>p]:m-0 [&>strong]:font-semibold [&>strong]:text-cicaindigo-900"
+            dangerouslySetInnerHTML={{ __html: thankYouData.description }}
+          />
+        ) : (
+          <p className="mt-2.5 max-w-md text-sm sm:text-base text-gray-600 leading-relaxed">
+            Hemos recibido tu consulta correctamente. Un asesor especializado de{' '}
+            <span className="font-semibold text-cicaindigo-900">CICA360</span> revisará tu información y se pondrá en contacto contigo a la brevedad.
+          </p>
+        )}
+
+        {/* Caja de expectativas y tiempos de respuesta */}
+        {(effectiveAlertTitle || effectiveAlertDescription) && (
+          <div className="mt-6 w-full max-w-md rounded-xl border border-gray-100 bg-gray-50/90 p-4 text-left text-sm text-gray-600 shadow-xs">
+            <div className="flex items-start gap-3">
+              <svg className="h-5 w-5 shrink-0 text-cicagreen-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                {effectiveAlertTitle && <span className="font-medium text-gray-900">{effectiveAlertTitle}</span>}
+                {effectiveAlertDescription && <p className="text-xs text-gray-500 mt-0.5">{effectiveAlertDescription}</p>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Botón para enviar otra consulta */}
+        <div className="mt-8 flex flex-col sm:flex-row items-center gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setStatus('idle');
+              setSubmittedName('');
+              setThankYouData(null);
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-xs transition hover:bg-gray-50 hover:text-cicaindigo-900 hover:border-gray-400 focus:outline-none focus:ring-4 focus:ring-cicaindigo-500/15 cursor-pointer"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {effectiveButtonLabel}
+          </button>
+        </div>
       </div>
     );
   }

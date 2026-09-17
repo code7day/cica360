@@ -545,8 +545,41 @@ export interface ContactFormPayload {
   [key: string]: unknown;
 }
 
+export interface ThankYouTemplate {
+  title: string;
+  description: string;
+  alert_title: string;
+  alert_description: string;
+  button_label: string;
+}
+
 export interface ContactFormSuccessData {
   uuid: string;
+  thank_you?: ThankYouTemplate;
+}
+
+export interface FormFieldData {
+  uuid: string;
+  name: string;
+  label: string;
+  type: string;
+  placeholder?: string | null;
+  help_text?: string | null;
+  is_required: boolean;
+  validation_rules?: string[] | null;
+  options?: Array<{ value: string; label: string }> | null;
+  sort_order: number;
+}
+
+export interface FormData {
+  uuid: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  success_message?: string | null;
+  redirect_url?: string | null;
+  fields: FormFieldData[];
+  thank_you: ThankYouTemplate;
 }
 
 // ---------------------------------------------------------------------------

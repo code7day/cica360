@@ -165,15 +165,31 @@ if (is_string($siteHost) && $siteHost !== '') {
     $forwardHeaders[] = 'X-Forwarded-Host: ' . $siteHost;
 }
 
+if (!empty($_SERVER['HTTP_REFERER'])) {
+    $forwardHeaders[] = 'Referer: ' . $_SERVER['HTTP_REFERER'];
+} elseif (!empty($_SERVER['HTTP_ORIGIN'])) {
+    $forwardHeaders[] = 'Origin: ' . $_SERVER['HTTP_ORIGIN'];
+}
+
 $ch = curl_init($targetUrl);
-curl_setopt_array($ch, [
+$curlOptions = [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST => true,
     CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
     CURLOPT_HTTPHEADER => $forwardHeaders,
     CURLOPT_TIMEOUT => 10,
     CURLOPT_CONNECTTIMEOUT => 5,
-]);
+];
+
+$insecureTls = cica360_env('STAMLESS_DEV_INSECURE_TLS') === 'true'
+    || str_ends_with((string) parse_url(STAMLESS_API_URL, PHP_URL_HOST), '.host');
+
+if ($insecureTls) {
+    $curlOptions[CURLOPT_SSL_VERIFYPEER] = false;
+    $curlOptions[CURLOPT_SSL_VERIFYHOST] = false;
+}
+
+curl_setopt_array($ch, $curlOptions);
 
 $responseBody = curl_exec($ch);
 $curlErrno = curl_errno($ch);

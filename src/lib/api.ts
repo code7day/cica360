@@ -117,16 +117,66 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-/**
- * Request genérico contra el API, con reintentos acotados para errores
- * transitorios (red, 5xx, 429) — un build no debería fallar por un
- * hipo momentáneo de red. Errores 4xx "reales" (401/403/404/422) NO se
- * reintentan: son determinísticos, reintentar no cambia el resultado.
- */
+function normalizeMediaUrls<T>(data: T): T {
+  if (!data) return data;
+  const targetApiUrl = (import.meta.env.STAMLESS_API_URL || process.env.STAMLESS_API_URL || '').replace(/\/+$/, '');
+  if (!targetApiUrl) return data;
+
+  try {
+    const json = JSON.stringify(data);
+    const replaced = json.replace(
+      /https?:\/\/(?:api\.stamless\.host|localhost|127\.0\.0\.1(?::[0-9]+)?|api\.stamless\.com)\/storage\//g,
+      `${targetApiUrl}/storage/`
+    );
+    return JSON.parse(replaced) as T;
+  } catch {
+    return data;
+  }
+}
+
+function getSiteHost(): string | undefined {
+  const siteUrl = import.meta.env.PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL;
+  if (!siteUrl) return undefined;
+  try {
+    return new URL(siteUrl).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+const ssgRequestCache = new Map<string, Promise<unknown>>();
+
+function cachedRequest<T>(cacheKey: string, fetcher: () => Promise<T>): Promise<T> {
+  if (ssgRequestCache.has(cacheKey)) {
+    return ssgRequestCache.get(cacheKey) as Promise<T>;
+  }
+
+  const promise = fetcher().catch((err) => {
+    ssgRequestCache.delete(cacheKey);
+    throw err;
+  });
+
+  ssgRequestCache.set(cacheKey, promise);
+  return promise;
+}
+
+export function clearSsgCache(): void {
+  ssgRequestCache.clear();
+}
+
 async function requestApi<T>(path: string, init: RequestInit = {}, attempt = 0): Promise<T> {
+  const isGet = !init.method || init.method.toUpperCase() === 'GET';
+  if (isGet && attempt === 0) {
+    return cachedRequest<T>(`api:${path}`, () => doRequestApi<T>(path, init, attempt));
+  }
+  return doRequestApi<T>(path, init, attempt);
+}
+
+async function doRequestApi<T>(path: string, init: RequestInit = {}, attempt = 0): Promise<T> {
   assertServerContext();
 
   const url = `${getBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+  const siteHost = getSiteHost();
 
   let response: Response;
 
@@ -138,6 +188,7 @@ async function requestApi<T>(path: string, init: RequestInit = {}, attempt = 0):
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${getBuildToken()}`,
+          ...(siteHost ? { 'X-Forwarded-Host': siteHost } : {}),
           ...init.headers,
         },
       },
@@ -146,7 +197,7 @@ async function requestApi<T>(path: string, init: RequestInit = {}, attempt = 0):
   } catch (cause) {
     if (attempt < MAX_RETRIES) {
       await backoff(attempt);
-      return requestApi<T>(path, init, attempt + 1);
+      return doRequestApi<T>(path, init, attempt + 1);
     }
 
     throw new ApiNetworkError(`No se pudo conectar con el API Stamless (${url}).`, cause);
@@ -165,22 +216,31 @@ async function requestApi<T>(path: string, init: RequestInit = {}, attempt = 0):
 
     if (error.isRetryable && attempt < MAX_RETRIES) {
       await backoff(attempt);
-      return requestApi<T>(path, init, attempt + 1);
+      return doRequestApi<T>(path, init, attempt + 1);
     }
 
     throw error;
   }
 
-  return envelope.data as T;
+  return normalizeMediaUrls<T>(envelope.data as T);
 }
 
 /** Como `requestApi`, pero devuelve `meta`/`links` de paginación además de `data`. */
 async function requestPaginated<T>(path: string, init: RequestInit = {}): Promise<Paginated<T>> {
+  const isGet = !init.method || init.method.toUpperCase() === 'GET';
+  if (isGet) {
+    return cachedRequest<Paginated<T>>(`paginated:${path}`, () => doRequestPaginated<T>(path, init));
+  }
+  return doRequestPaginated<T>(path, init);
+}
+
+async function doRequestPaginated<T>(path: string, init: RequestInit = {}): Promise<Paginated<T>> {
   assertServerContext();
 
   // Reimplementado en vez de envolver requestApi() porque acá necesitamos
   // meta/links del envelope completo, no solo `data`.
   const url = `${getBaseUrl()}${path.startsWith('/') ? path : `/${path}`}`;
+  const siteHost = getSiteHost();
 
   const response = await fetchWithTimeout(
     url,
@@ -189,6 +249,7 @@ async function requestPaginated<T>(path: string, init: RequestInit = {}): Promis
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${getBuildToken()}`,
+        ...(siteHost ? { 'X-Forwarded-Host': siteHost } : {}),
         ...init.headers,
       },
     },
@@ -202,7 +263,7 @@ async function requestPaginated<T>(path: string, init: RequestInit = {}): Promis
   }
 
   return {
-    data: envelope.data ?? [],
+    data: normalizeMediaUrls<T[]>(envelope.data ?? []),
     meta: envelope.meta as Paginated<T>['meta'],
     links: envelope.links as Paginated<T>['links'],
   };
@@ -357,6 +418,14 @@ export function getMedia(uuid: string): Promise<Media> {
  */
 export function getSiteTracking(): Promise<SiteTracking> {
   return requestApi<SiteTracking>('/settings/tracking');
+}
+
+/**
+ * Devuelve la definición y configuración de un formulario (ej. 'contacto'),
+ * incluyendo campos, reglas y plantilla de la página de agradecimiento.
+ */
+export function getForm(slug: string): Promise<FormData> {
+  return requestApi<FormData>(`/forms/${encodeURIComponent(slug)}`);
 }
 
 // ---------------------------------------------------------------------------

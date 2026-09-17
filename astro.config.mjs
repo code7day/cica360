@@ -5,13 +5,22 @@ import sitemap from '@astrojs/sitemap';
 import icon from 'astro-icon';
 import tailwindcss from '@tailwindcss/vite';
 import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 
-const mkcertCaPath = path.join(os.homedir(), 'Library/Application Support/mkcert/rootCA.pem');
-if (!process.env.NODE_EXTRA_CA_CERTS && fs.existsSync(mkcertCaPath)) {
-  process.env.NODE_EXTRA_CA_CERTS = mkcertCaPath;
-}
+const getHttpsConfig = () => {
+  try {
+    const keyPath = '/Users/edu/localhost+1-key.pem';
+    const certPath = '/Users/edu/localhost+1.pem';
+    if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+      return {
+        key: fs.readFileSync(keyPath),
+        cert: fs.readFileSync(certPath),
+      };
+    }
+  } catch {
+    // Si no se puede leer o no existen los certificados locales, continuar sin HTTPS en vite
+  }
+  return undefined;
+};
 
 export default defineConfig({
   output: 'static',
@@ -22,10 +31,7 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
     server: {
-      https: {
-        key: fs.readFileSync('/Users/edu/localhost+1-key.pem'),
-        cert: fs.readFileSync('/Users/edu/localhost+1.pem'),
-      }
+      https: getHttpsConfig(),
     },
   },
   build: {

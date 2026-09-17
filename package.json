@@ -13,6 +13,7 @@
     "build": "astro check && astro build",
     "preview": "astro preview",
     "check": "astro check",
+    "deploy": "./deploy.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -26,8 +26,16 @@
 # Página 404 propia (Astro genera dist/404.html a partir de src/pages/404.astro).
 ErrorDocument 404 /404.html
 
-# Sin listado de directorios.
-Options -Indexes
+# Bloquear acceso HTTP a archivos sensibles (.env, .git, etc.)
+<FilesMatch "^\.(env|git|htaccess|htpasswd)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
 
 # Compresión (si mod_deflate está disponible en el hosting).
 <IfModule mod_deflate.c>
