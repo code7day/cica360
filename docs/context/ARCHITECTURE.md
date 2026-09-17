@@ -78,30 +78,37 @@ El backend Stamless es multi-tenant (single DB + `tenant_id`), pero este front s
 ## 6. Build y deploy
 
 ```
-GitHub Actions (Node disponible, workflow_dispatch o push a main)
+Genesis (Filament) — al guardar Page/Post/Service/Slider/Slide/Menu/
+MenuItem/Testimonial/Setting de un tenant con webhook configurado
+        │
+        │  DeployTriggerObserver → TriggerFrontendDeploy (Job, debounce ~90s)
+        │  → FrontendDeployService → POST /repos/{owner}/{repo}/dispatches
+        │    (event_type: content-updated)
+        ▼
+GitHub Actions (Node disponible; repository_dispatch, push a main, o workflow_dispatch manual)
         │
         ├─ npm ci
         ├─ astro build   ──►  dist/  (HTML/CSS/JS estático)
         │
-        └─ upload-artifact ──► "cica360-dist" (zip descargable desde el run)
-                                         │
-                                         ▼
-                        Tech Lead descarga el zip y lo sube a mano
-                        (cPanel File Manager → Upload → Extract)
+        ├─ upload-artifact ──► "cica360-dist" (zip de respaldo/rollback manual)
+        │
+        └─ FTP-Deploy-Action ──► sube dist/ automáticamente
                                          │
                                          ▼
                         Shared hosting del cliente (sin Node/npm)
                                          ├─ dist/ (servido por Apache, document root)
                                          ├─ contacto.php / ipinfo.php / _env.php (ver §3)
                                          └─ .env (UN NIVEL POR ENCIMA del document root,
-                                                  fuera del alcance del zip — se configura
-                                                  una sola vez, sobrevive cada redeploy)
+                                                  fuera del alcance del zip/FTP — se
+                                                  configura una sola vez, sobrevive
+                                                  cada redeploy)
 ```
 
-- El **build nunca corre en el servidor de producción** — corre en GitHub Actions, donde sí hay Node.
-- **2026-09-13 (decisión explícita del Tech Lead, ver PROGRESS.md):** el paso a producción es MANUAL vía cPanel (subir y extraer el zip del artifact `cica360-dist`), no FTP/SFTP automatizado — mientras el contenido cambie seguido (ventana de pre-lanzamiento), se prefiere el control manual explícito de cuándo sale cada versión a producción por sobre la automatización. El snippet de deploy por FTP queda comentado en el workflow por si más adelante se decide automatizar.
-- El artifact sube únicamente el resultado (`dist/`, que ya incluye `contacto.php`/`ipinfo.php`/`_env.php` — Astro copia `public/` tal cual) — el hosting nunca ve `node_modules`, `package.json` ni el código fuente de Astro.
-- **Freshness del contenido**: como el sitio es estático, un cambio de contenido en Filament (backend) no se refleja automáticamente — hace falta un rebuild + re-subida manual del zip. Fase 0-5 del MVP asume esto manual (correr el workflow y subir el zip a mano tras publicar cambios); la Fase 6 (post-MVP) automatiza esto con un webhook desde Filament — evaluar recién cuando el ritmo de publicación lo justifique.
+- El **build nunca corre en el servidor de producción** — corre en GitHub Actions, donde sí hay Node. El deploy tampoco necesita Node en destino: `FTP-Deploy-Action` corre en el runner y solo transfiere archivos ya compilados.
+- **2026-09-17 (Fase 6 post-MVP adelantada, ver ADR-006/PROGRESS.md — reemplaza la decisión manual del 2026-09-13):** un cambio de contenido guardado en Studio dispara sin intervención humana el rebuild+deploy completo (delay de ~1-3 min: debounce del lado de Genesis + tiempo de build/subida). Motivo del cambio: se confirmó en producción que un editor guardando contenido no veía el cambio reflejado — rompía la premisa básica de un CMS headless ("edito y se publica"), y el "mientras el contenido cambie seguido, se prefiere control manual" del ADR anterior dejó de aplicar apenas el sitio quedó en uso real.
+- Requiere 2 configuraciones que **no viven en código** (a propósito, son credenciales): en GitHub, los secrets `FTP_SERVER`/`FTP_USERNAME`/`FTP_PASSWORD` (Settings → Secrets and variables → Actions, este repo); en Genesis, `Tenant::deploy_repo` (`"owner/repo"`, ej. `"eduflores/cica360"`) + `Tenant::deploy_token` (PAT de GitHub con permiso para disparar Actions de este repo) seteados para el tenant de CICA360 — ninguno de los dos existe todavía en el modelo por defecto, es opt-in por tenant.
+- El artifact de respaldo sigue subiendo el resultado (`dist/`, que ya incluye `contacto.php`/`ipinfo.php`/`_env.php` — Astro copia `public/` tal cual) — el hosting nunca ve `node_modules`, `package.json` ni el código fuente de Astro. Sirve como rollback rápido si el FTP automático fallara.
+- **Freshness del contenido**: ya NO depende de que alguien recuerde correr el workflow y subir el zip — el propio guardado en Studio lo dispara. Sigue siendo SSG (cero cambio a Astro/islands, cero impacto SEO/performance) — lo único que cambió es QUIÉN dispara el build, no CÓMO se renderiza el sitio.
 
 ---
 

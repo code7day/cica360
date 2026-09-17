@@ -3,11 +3,21 @@ name: Build y deploy (CICA360 front)
 # Ver docs/context/ARCHITECTURE.md §6. El build corre acá (Node disponible
 # en el runner) — el shared hosting de destino nunca ejecuta Node, solo
 # recibe el `dist/` resultante por FTP/SFTP.
+#
+# 2026-09-17 (Fase 6 post-MVP adelantada, ver ADR-006/PROGRESS.md): el
+# trigger `repository_dispatch` permite que Genesis (el backend headless)
+# dispare este mismo workflow cuando se guarda contenido en Studio —
+# `FrontendDeployService`/`TriggerFrontendDeploy` (genesis) hacen el POST a
+# `repos/{owner}/{repo}/dispatches` con `event_type: content-updated`. El
+# `types:` de abajo tiene que coincidir EXACTO con esa constante
+# (`FrontendDeployService::EVENT_TYPE`).
 
 on:
   push:
     branches: [main]
   workflow_dispatch: {}
+  repository_dispatch:
+    types: [content-updated]
 
 jobs:
   build:
@@ -31,17 +41,16 @@ jobs:
           PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
           PUBLIC_CONTACT_FORM_ENDPOINT: /contacto.php
 
-      # 2026-09-13 (decisión del Tech Lead, ver PROGRESS.md/ARCHITECTURE.md
-      # §6): el deploy queda MANUAL vía cPanel por ahora (no FTP scriptado)
-      # — "se debería compilar aquí y con un proceso manual un zip, se suba
-      # los archivos a cPanel". Este artifact YA ES ese zip: GitHub Actions
-      # empaqueta el contenido de `dist/` (sin la carpeta `dist` en sí, los
-      # archivos quedan en la RAÍZ del zip al descargarlo) — se baja desde
-      # la página del run ("Artifacts" → `cica360-dist`) y se sube/extrae
+      # Artifact de respaldo (2026-09-13, ver ARCHITECTURE.md §6): sigue
+      # subiéndose SIEMPRE, aunque el deploy de abajo ya sea automático —
+      # sirve como rollback manual rápido (bajar el zip de un run anterior y
+      # subirlo a mano si el FTP automático fallara o hiciera falta revertir
+      # sin esperar un nuevo build). `dist/` sin la carpeta en sí, los
+      # archivos quedan en la RAÍZ del zip al descargarlo — se sube/extrae
       # tal cual en el File Manager de cPanel, en el document root del
       # dominio. `.env` (credenciales reales de `contacto.php`/`ipinfo.php`,
       # ver `public/_env.php`) vive un nivel POR ENCIMA del document root a
-      # propósito — la extracción del zip nunca lo toca ni lo pisa, se
+      # propósito — ni el zip ni el FTP de abajo lo tocan/pisan nunca, se
       # configura una sola vez en el servidor y sobrevive a cada redeploy.
       - uses: actions/upload-artifact@v4
         with:
@@ -50,18 +59,20 @@ jobs:
           retention-days: 7
 
       # --- Deploy automático (FTP) ---
-      # NO en uso — decisión explícita de mantener el paso a producción
-      # manual mientras el contenido cambia seguido (pre-lanzamiento). Se
-      # deja el snippet acá por si más adelante se quiere automatizar (una
-      # vez el equipo esté cómodo con la cadencia de publicación): requeriría
-      # configurar los secrets FTP_SERVER/FTP_USERNAME/FTP_PASSWORD en
-      # Settings -> Secrets del repo.
-      #
-      # - name: Deploy a shared hosting (FTP)
-      #   uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-      #   with:
-      #     server: ${{ secrets.FTP_SERVER }}
-      #     username: ${{ secrets.FTP_USERNAME }}
-      #     password: ${{ secrets.FTP_PASSWORD }}
-      #     local-dir: ./dist/
-      #     server-dir: ./
+      # 2026-09-17 (Fase 6 post-MVP adelantada, ver ADR-006/PROGRESS.md):
+      # reemplaza la decisión de 2026-09-13 de mantener el paso a producción
+      # manual — un cambio de contenido en Studio ya no se reflejaba en la
+      # website sin que alguien bajara y subiera el zip a mano, lo cual va
+      # contra la premisa de un CMS headless ("editar y ver el cambio").
+      # Requiere los secrets `FTP_SERVER`/`FTP_USERNAME`/`FTP_PASSWORD`
+      # configurados en Settings → Secrets and variables → Actions de este
+      # repo — sin ellos, este paso falla (el resto del workflow ya corrió
+      # bien igual, el artifact de arriba sigue disponible como fallback).
+      - name: Deploy a shared hosting (FTP)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: ./
