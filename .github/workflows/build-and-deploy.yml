@@ -77,3 +77,13 @@ jobs:
           protocol: ftps
           local-dir: ./dist/
           server-dir: ./
+          # 2026-09-18: el hosting (Ferozo/DonWeb) devuelve "550 .htaccess:
+          # Permission denied" al intentar escribirlo por FTP, aunque el
+          # resto de los 118 archivos suba sin problema — es una protección
+          # típica de hosting compartido sobre este archivo puntual. El
+          # `.htaccess` acá es estático (reglas de rewrite/HTTPS, no cambia
+          # con cada edición de contenido en Studio), así que se excluye del
+          # deploy automático y se sube UNA vez a mano por el File Manager
+          # del panel — no bloquea el resto del pipeline.
+          exclude: |
+            **/.htaccess
