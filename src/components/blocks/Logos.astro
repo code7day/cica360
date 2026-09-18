@@ -561,8 +561,11 @@ const LOGO_ITEM_WIDTH_CLASS =
         for (let page = 0; page < count; page++) {
           const dot = document.createElement('button');
           dot.type = 'button';
+          // 2026-09-18: h-9 -> h-7, ver mismo ajuste/motivo en Hero.astro
+          // (el "gap" entre dots era el área de toque de 36px, no un gap
+          // real -- se acorta bajando el tamaño del botón).
           dot.className =
-            'group relative flex h-9 w-9 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation';
+            'group relative flex h-7 w-7 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation';
           dot.dataset.index = String(page);
           dot.setAttribute('role', 'tab');
           dot.setAttribute('aria-label', `Ir a la página ${page + 1} de logos`);
