@@ -76,7 +76,12 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./dist/
-          server-dir: ./
+          # 2026-09-18: la cuenta FTP no aterriza en public_html/ por
+          # default -- aterriza en la raíz de la cuenta. `server-dir: ./`
+          # (el default anterior) terminó creando una copia duplicada de
+          # todo el sitio en la raíz del hosting, fuera de public_html/.
+          # Hay que apuntar explícito al document root real.
+          server-dir: ./public_html/
           # 2026-09-18: el hosting (Ferozo/DonWeb) devuelve "550 .htaccess:
           # Permission denied" al intentar escribirlo por FTP, aunque el
           # resto de los 118 archivos suba sin problema — es una protección
