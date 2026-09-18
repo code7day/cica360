@@ -852,6 +852,35 @@ const cardClass = CARD_CLASSES[featureStyle];
     overflow: hidden;
   }
 
+  /* CORRECCIÓN 2026-09-18 (pedido puntual, con captura a <=375px de ancho):
+     "el padding-top de la seccion de features deberia tener por lo menos
+     20px minimo para que no se pegue mucho al borde". Mismo mecanismo de
+     fondo ya documentado arriba ("no hay espacio arriba"): con `align-
+     items: center` + `overflow: hidden` durante el pin, si el contenido
+     centrado (heading + cards) supera los 100vh/100dvh disponibles, la
+     mitad del sobrante se recorta contra el TOPE de la sección — en
+     celulares muy angostos el texto envuelve a más líneas (más alto), así
+     que llega a comerse el `padding-top` (`py-12`, 48px) por completo. El
+     fix universal de `align-items: flex-start` para TODO el rango <768px
+     ya se probó (ver 6ta/7ma vuelta arriba) y se revirtió porque en el
+     caso común (la mayoría de los celulares, más anchos/altos que el
+     contenido) el heading quedaba "muy arriba", pegado al navbar. Acá se
+     acota la MISMA técnica exclusivamente a celulares angostos de verdad
+     (<=375px de ANCHO, ej. iPhone SE — condición de `width`, no de
+     `height`, distinta a la del pin) — un subconjunto bastante más chico
+     que el <768px universal ya descartado, sin tocar el balance ya
+     aceptado del resto del rango. Con `flex-start` el `padding-top` de la
+     tarjeta interna queda SIEMPRE completo y visible (el contenido arranca
+     pegado al tope real de la sección, nunca recortado desde arriba); el
+     sobrante, si lo hay, se recorta del lado de ABAJO en cambio — mismo
+     trade-off aceptado que la 6ta vuelta, ahora acotado a un rango mucho
+     más angosto. */
+  @media (max-width: 375px) {
+    section[data-features-carousel].js-pin-active {
+      align-items: flex-start;
+    }
+  }
+
   /* 2026-09-07, pedido del Tech Lead ("20px de margen... a la derecha en
      el ultimo elemento, de esa forma siempre se verá alineado al cuerpo de
      la pagina"): el resto de las tarjetas usa `snap-start` (alinean su
