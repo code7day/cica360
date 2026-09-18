@@ -24,6 +24,18 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 
+require_once __DIR__ . '/_cors.php';
+cica360_apply_local_dev_cors();
+
+// El preflight que el navegador manda ANTES del POST real cuando el
+// request es cross-origin con `Content-Type: application/json` (dev local
+// con MAMP, ver docblock de `_cors.php`) — cortamos acá, antes de exigir
+// POST, para no devolverle un 405 al preflight.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
+    http_response_code(204);
+    exit;
+}
+
 /**
  * Nota de compatibilidad: se evita a propósito cualquier sintaxis de PHP
  * 8.1+ (tipo `never`, enums, readonly, etc.) porque no está confirmado

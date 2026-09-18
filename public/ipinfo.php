@@ -35,6 +35,9 @@ header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
 
+require_once __DIR__ . '/_cors.php';
+cica360_apply_local_dev_cors();
+
 function respond_ok(?string $countryCode): void
 {
     http_response_code(200);
