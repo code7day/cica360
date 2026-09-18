@@ -17,8 +17,9 @@
  * cumple ese rol (título "Contactame"/subtítulo), el `contact_form` va
  * directo al formulario.
  */
-import type { Block, Media } from '../../lib/types';
+import type { Block, Media, FormData as ContactFormRecord } from '../../lib/types';
 import ContactForm from '../islands/ContactForm';
+import { getForm } from '../../lib/api';
 import { resolveBackgroundStyle, type BackgroundColorProperties } from '../../lib/background';
 
 interface Props {
@@ -84,7 +85,35 @@ const CONTENT_WIDTH_CLASSES: Record<NonNullable<ContactFormBlockProperties['cont
 
 const { block } = Astro.props;
 const properties = (block.properties as ContactFormBlockProperties) ?? {};
-const content = block.content as { background_image?: Media | null };
+const content = block.content as { background_image?: Media | null; form_slug?: string | null };
+
+// 2026-09-18, Fase 2 del plan de formularios (ADR-073 de genesis, "Fuera de
+// alcance de esta fase, a propósito: `ContactFormBlock.astro` (cica360)
+// sigue ignorando `content.form_id` por completo"). Hasta acá este bloque
+// SIEMPRE renderizaba `<ContactForm />` con sus 7 campos 100% hardcodeados,
+// sin importar qué `Form` haya elegido el admin en Studio — si desactivaba
+// un campo ahí, el sitio público lo seguía mostrando igual, reportado en
+// vivo por el Tech Lead. `content.form_slug` (renombrado de `form_id`
+// numérico a `form_slug` del lado de genesis — el API público resuelve
+// formularios por slug, no por id interno, igual que Páginas/Posts/
+// Servicios) se resuelve acá en build time con `getForm()` (ya existía en
+// `api.ts`, sin ningún caller hasta ahora) y el `Form` completo (campos +
+// `thank_you`) se le pasa como prop a `<ContactForm />`, que ahora los
+// renderiza dinámicamente (ver ese componente).
+//
+// Fallo silencioso a propósito si `getForm()` rechaza (formulario borrado/
+// inactivo, o un `form_slug` que quedó huérfano): loguea y no rompe el
+// build completo del sitio por UN bloque de UNA página — el bloque
+// simplemente no renderiza el formulario en vez de tirar todo el `astro
+// build` abajo por un dato de contenido inconsistente.
+let form: ContactFormRecord | null = null;
+if (content.form_slug) {
+  try {
+    form = await getForm(content.form_slug);
+  } catch (error) {
+    console.error(`[ContactFormBlock] No se pudo resolver el formulario "${content.form_slug}":`, error);
+  }
+}
 
 const sectionStyle = [resolveBackgroundStyle(properties), properties.text_color ? `color: ${properties.text_color};` : '']
   .join(' ')
@@ -124,6 +153,6 @@ const overlayOpacity = Math.min(100, Math.max(0, properties.overlay_opacity ?? 0
   {overlayOpacity > 0 && <div class="pointer-events-none absolute inset-0 bg-black" style={`opacity: ${overlayOpacity / 100};`} />}
 
   <div class={`relative z-10 mx-auto ${contentWidthClass} ${paddingYClass}`} data-reveal="up">
-    <ContactForm client:visible />
+    {form && <ContactForm form={form} client:visible />}
   </div>
 </section>

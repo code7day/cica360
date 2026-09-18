@@ -144,9 +144,51 @@ function getSiteHost(): string | undefined {
   }
 }
 
+/**
+ * 2026-09-18, pedido del Tech Lead: `npx astro dev` corre en Node y no
+ * interpreta PHP, así que un endpoint relativo (`/contacto.php`,
+ * `/ipinfo.php`) resuelto contra el propio server de Astro da 404 en local.
+ * El Tech Lead corre MAMP aparte sirviendo el sitio completo (con PHP real)
+ * en `PUBLIC_SITE_URL` (ej. `https://cica360.host`) — en dev, un endpoint
+ * relativo se resuelve contra ESE host en vez del de Astro. En build/
+ * producción (`import.meta.env.DEV === false`) esto es un no-op: el proxy
+ * PHP ya vive junto al HTML estático, así que la ruta relativa alcanza sola
+ * y no tocamos nada (ver ADR-002). Si el proyecto ya usa una URL absoluta
+ * (fallback de token acotado apuntando al API directo) tampoco se toca.
+ */
+function resolveLocalPhpProxyEndpoint(rawEndpoint: string): string {
+  if (!import.meta.env.DEV || !rawEndpoint.startsWith('/')) {
+    return rawEndpoint;
+  }
+
+  const siteUrl = import.meta.env.PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL;
+  if (!siteUrl) {
+    return rawEndpoint;
+  }
+
+  return `${siteUrl.replace(/\/+$/, '')}${rawEndpoint}`;
+}
+
 const ssgRequestCache = new Map<string, Promise<unknown>>();
 
+/**
+ * Memoiza requests GET durante `astro build` para evitar 429 por pedidos
+ * paralelos duplicados a recursos compartidos (menús, tracking, forms, etc.)
+ * cuando muchas páginas se generan en el mismo proceso.
+ *
+ * En `astro dev` ese mismo Map vive durante toda la vida del proceso del
+ * servidor (no por request), así que servía datos viejos indefinidamente:
+ * un cambio en Studio (ej. desactivar un campo) no se reflejaba hasta
+ * reiniciar `astro dev` a mano. En dev las páginas se sirven on-demand
+ * (no hay build masivo en paralelo), así que el riesgo de 429 que motivó
+ * el cache no aplica igual — se bypassea el cache por completo con
+ * `import.meta.env.DEV` para que cada request traiga datos frescos.
+ */
 function cachedRequest<T>(cacheKey: string, fetcher: () => Promise<T>): Promise<T> {
+  if (import.meta.env.DEV) {
+    return fetcher();
+  }
+
   if (ssgRequestCache.has(cacheKey)) {
     return ssgRequestCache.get(cacheKey) as Promise<T>;
   }
@@ -456,10 +498,15 @@ export interface SubmitContactFormError {
 export async function submitContactForm(
   payload: ContactFormPayload,
 ): Promise<SubmitContactFormResult | SubmitContactFormError> {
-  const endpoint = import.meta.env.PUBLIC_CONTACT_FORM_ENDPOINT || '/contacto.php';
+  const rawEndpoint = import.meta.env.PUBLIC_CONTACT_FORM_ENDPOINT || '/contacto.php';
   const formsToken = import.meta.env.PUBLIC_STAMLESS_FORMS_TOKEN;
 
-  const usingDirectApi = !endpoint.startsWith('/') || endpoint.includes('/v1/');
+  // `usingDirectApi` se decide sobre la ruta CRUDA (antes de resolver el
+  // host de dev): resolver contra PUBLIC_SITE_URL en local no debe hacer
+  // que esto se confunda con el fallback de token acotado contra el API
+  // directo (ver docblock de resolveLocalPhpProxyEndpoint más arriba).
+  const usingDirectApi = !rawEndpoint.startsWith('/') || rawEndpoint.includes('/v1/');
+  const endpoint = resolveLocalPhpProxyEndpoint(rawEndpoint);
 
   try {
     const response = await fetch(endpoint, {
@@ -506,7 +553,7 @@ export async function submitContactForm(
  * corto propio (no depende del default del navegador) vía `AbortController`.
  */
 export async function detectVisitorCountry(): Promise<string | null> {
-  const endpoint = import.meta.env.PUBLIC_IPINFO_ENDPOINT || '/ipinfo.php';
+  const endpoint = resolveLocalPhpProxyEndpoint(import.meta.env.PUBLIC_IPINFO_ENDPOINT || '/ipinfo.php');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
 
