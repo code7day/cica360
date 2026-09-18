@@ -864,21 +864,38 @@ const cardClass = CARD_CLASSES[featureStyle];
      fix universal de `align-items: flex-start` para TODO el rango <768px
      ya se probó (ver 6ta/7ma vuelta arriba) y se revirtió porque en el
      caso común (la mayoría de los celulares, más anchos/altos que el
-     contenido) el heading quedaba "muy arriba", pegado al navbar. Acá se
-     acota la MISMA técnica exclusivamente a celulares angostos de verdad
-     (<=375px de ANCHO, ej. iPhone SE — condición de `width`, no de
-     `height`, distinta a la del pin) — un subconjunto bastante más chico
-     que el <768px universal ya descartado, sin tocar el balance ya
-     aceptado del resto del rango. Con `flex-start` el `padding-top` de la
-     tarjeta interna queda SIEMPRE completo y visible (el contenido arranca
-     pegado al tope real de la sección, nunca recortado desde arriba); el
-     sobrante, si lo hay, se recorta del lado de ABAJO en cambio — mismo
-     trade-off aceptado que la 6ta vuelta, ahora acotado a un rango mucho
-     más angosto. */
-  @media (max-width: 375px) {
-    section[data-features-carousel].js-pin-active {
-      align-items: flex-start;
-    }
+     contenido) el heading quedaba "muy arriba", pegado al navbar.
+
+     CORRECCIÓN 2026-09-18 (2da vuelta, mismo día): el reporte de arriba
+     usaba `flex-start` a secas, acotado a `<=375px` por ANCHO — funciona
+     (el padding-top queda siempre intacto), pero tiene una contrapartida
+     real: TODO el sobrante que antes se repartía mitad arriba/mitad abajo
+     ahora se recorta ENTERO contra el borde INFERIOR — el Tech Lead
+     reportó, con otra captura, que el padding-bottom "también faltó" en
+     ese mismo rango. Cambio a `align-items: safe center` (valor CSS
+     estándar, no un hack): se comporta EXACTAMENTE como `center` mientras
+     el contenido entra en los 100vh/100dvh disponibles (el caso común, sin
+     tocar el balance ya confirmado) — SOLO cuando centrar causaría
+     overflow real, el navegador lo trata como `start` automáticamente
+     (mismo efecto que `flex-start`, pero activado por overflow real
+     detectado en tiempo de layout, no por un umbral de ancho fijo
+     adivinado). Es decir: en un celular <=375px pero más alto que el
+     contenido, sigue viéndose centrado como siempre; solo en el caso
+     genuinamente corto se activa la protección. No resuelve el trade-off
+     de fondo (con overflow real, el sobrante sigue sin poder repartirse
+     mitad arriba/mitad abajo — eso es matemáticamente imposible con una
+     caja de alto fijo + `overflow: hidden` si el contenido no entra) pero
+     es estrictamente mejor que el `flex-start` fijo: solo protege el tope
+     cuando hace falta de verdad. Soporte de navegador: `align-items: safe
+     center` en flex es válido desde Safari 16.4 (marzo 2023) — en
+     navegadores más viejos esta declaración es inválida y se ignora por
+     completo, quedando el `align-items: center` de la regla de arriba sin
+     cambios (0 regresión, mismo comportamiento que tenían antes de este
+     fix). Se quita el `@media (max-width: 375px)`: al ser condicional al
+     overflow real (no al ancho), no hace falta acotarlo por breakpoint —
+     aplica siempre que el pin esté activo (<768px). */
+  section[data-features-carousel].js-pin-active {
+    align-items: safe center;
   }
 
   /* 2026-09-07, pedido del Tech Lead ("20px de margen... a la derecha en
