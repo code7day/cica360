@@ -3,6 +3,7 @@ import type {
   ApiEnvelope,
   ContactFormPayload,
   ContactFormSuccessData,
+  FormData,
   Media,
   Menu,
   Page,
