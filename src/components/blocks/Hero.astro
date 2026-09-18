@@ -763,11 +763,20 @@ if (slides.length === 0 && import.meta.env.DEV) {
             <Icon name="ph:caret-right" class="3md:size-8 size-5" />
           </button>
 
+          {/*
+            2026-09-18, pedido del Tech Lead: los dots se veían muy
+            separados entre sí. No era un `gap` del flex (no tenía) sino el
+            área de toque de cada botón (`h-9 w-9` = 36px) rodeando un punto
+            visual de solo 8px — al no tener gap, los botones se tocaban
+            entre sí pero ese padding invisible se leía como espacio de más.
+            Bajado a `h-7 w-7` (28px) para acortar esa separación visual sin
+            perder un área de toque razonable.
+          */}
           <div class="absolute bottom-14 left-4 z-20 flex items-center sm:left-6" role="tablist" aria-label="Seleccionar slide">
             {slides.map((_, index) => (
               <button
                 type="button"
-                class="group relative flex h-9 w-9 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation"
+                class="group relative flex h-7 w-7 items-center justify-center cursor-pointer p-0 bg-transparent border-0 touch-manipulation"
                 data-hero-dot
                 data-active={index === 0 ? 'true' : 'false'}
                 role="tab"
