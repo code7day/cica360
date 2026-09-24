@@ -32,7 +32,30 @@ jobs:
 
       - run: npm ci
 
+      # --- DIAGNÓSTICO TEMPORAL (2026-09-24) ---
+      # Investigando por qué el step de abajo falla en CI (exit 1, sin
+      # diagnósticos) mientras que en local pasa limpio. Los logs de 2 runs
+      # fallidos (#36/#37) muestran, justo en el cleanup del job, procesos
+      # huérfanos "npm install axios socket.io-client" que NO están
+      # declarados en package.json/package-lock.json ni en el código fuente
+      # — no se pudo identificar su origen por análisis estático. Este paso
+      # muestrea el árbol de procesos cada 1s en background mientras corre
+      # el build, para capturar quién lanzó ese npm install (su padre real)
+      # antes de que quede huérfano. QUITAR una vez resuelto.
+      - name: "[DEBUG] Iniciar muestreo de procesos"
+        run: |
+          (while true; do
+            echo "=== $(date -u +%H:%M:%S.%N) ===" >> /tmp/ps-sample.log
+            ps -ef --forest >> /tmp/ps-sample.log 2>&1
+            sleep 1
+          done) &
+          echo $! > /tmp/ps-sampler.pid
+
       - name: Build (astro check + astro build)
+        # continue-on-error: el job sigue aunque falle, así el paso de
+        # diagnóstico de abajo llega a subir las evidencias igual.
+        continue-on-error: true
+        id: build
         run: npm run build
         env:
           STAMLESS_API_URL: ${{ secrets.STAMLESS_API_URL }}
@@ -40,6 +63,27 @@ jobs:
           STAMLESS_API_TOKEN: ${{ secrets.STAMLESS_API_TOKEN }}
           PUBLIC_SITE_URL: ${{ vars.PUBLIC_SITE_URL }}
           PUBLIC_CONTACT_FORM_ENDPOINT: /contacto.php
+
+      - name: "[DEBUG] Detener muestreo y subir evidencia"
+        if: always()
+        run: |
+          kill "$(cat /tmp/ps-sampler.pid)" 2>/dev/null || true
+          mkdir -p /tmp/debug-artifact
+          cp /tmp/ps-sample.log /tmp/debug-artifact/ 2>/dev/null || true
+          cp -r "$HOME/.npm/_logs" /tmp/debug-artifact/npm-logs 2>/dev/null || true
+          env | sed -E 's/(STAMLESS_API_TOKEN|FTP_PASSWORD)=.*/\1=[REDACTED]/' > /tmp/debug-artifact/env.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug-diagnostics
+          path: /tmp/debug-artifact/
+          retention-days: 7
+
+      - name: "[DEBUG] Fallar el job si el build realmente falló"
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+      # --- FIN DIAGNÓSTICO TEMPORAL ---
 
       # Artifact de respaldo (2026-09-13, ver ARCHITECTURE.md §6): sigue
       # subiéndose SIEMPRE, aunque el deploy de abajo ya sea automático —
